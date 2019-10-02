@@ -7,15 +7,45 @@ library(foreign)
 library(dplyr)
 library(stringr)
 
-#Some files read in from SAS outputs to test against the R script
-#SASoldbandsB <- read.csv("X:\\brant_data\\testingsas.csv") #To make sure that our oldbandsB is the same as SAS's. Use anti_join to test for differences between dataframes.
-#SASOldstuff <- read.csv("X:\\brant_data\\SASOldstuff.csv")
-#SASPrea <- read.csv("X:\\brant_data\\SASPrea.csv")
-#SASBA86 <- read.csv("X:\\brant_data\\SASBA87.csv")
-#SASBC86 <- read.csv("X:\\brant_data\\SASbc87.csv")
-#SASBG86 <- read.csv("X:\\brant_data\\SASBG87.csv")
-#SASBS86 <- read.csv("X:\\brant_data\\SASBS86.csv")
-#SASHL86 <- read.csv("X:\\brant_data\\SASHL86.csv")
+#Creates and empty dataframe where we'll store instances where a band or metal is repeated so we can look into
+# the data and check for mistakes later
+CheckReplicates <- setNames(data.frame(matrix(ncol = 3, nrow = 0)), c("ID", "FROM", "METAL"))
+
+#Function to pull mistake bands from whatever dataframe we're trying to summarise
+#         Arg Explanations - df: dataframe you're checking
+#                            groupby: The id you're grouping by, the thing you're looking for duplicates of
+#                            yeardf: this is a silly way for me to find the year. I just pick a basic df with a 
+#                                    year column to pull the year out from. This may change later.
+#                            CheckReplicate: Just puts in the same df we're storing it all in. 
+#         Col Explanations - FROM: What dataframe the duplicates were pulled from
+#                            ID: What the duplicates are of 
+#               Other columns are to easily look and see if there are differences in the duplicates.
+#               For example if you have two of the same bands repeated you can look to the metal column and 
+#               see that their metals aren't the same, and that you need to go into the data and see why. 
+Mistakes <- function(x, groupby, yeardf,CheckReplicates){
+  if(nrow(x) != 0){
+    name <- as.character(substitute(x)) #pulls the name of the df the duplicates are from
+    year <-  names(table(yeardf$YEAR))[as.vector(table(yeardf$YEAR)) == max(table(yeardf$YEAR))] #This might be ok once in giant for loop
+    subset <- x[x$COUNT > 1 & !is.na(x[[groupby]]),] %>% select(groupby, starts_with("METAL"), 
+                                                                starts_with("BAND"), starts_with("NEST"), 
+                                                                matches("TMATE*")) %>%
+                                                         mutate(FROM = name, ID = groupby, YEAR = year)
+    CheckReplicates <- bind_rows(CheckReplicates, subset)
+    } 
+  return(CheckReplicates)
+}
+
+#This is a function that takes the mean across a group (like METAL), but it handles
+#   NA's better. If I didn't have this in instances where there is NA for the whole group I'd get NaN
+#   and would have to change that to NA in another step but this makes it easier.
+mean_ <- function(df, col){
+  dumb <- mean(col, na.rm = T, data = df) #*** double check round
+  if(is.nan(dumb)){
+    dumb <- NA
+  }
+  return(dumb)
+}
+
 
 ###
 #Import All the Things
@@ -29,16 +59,7 @@ library(stringr)
 #Import in Bird Banding Lab data as our old bands and do some stuff to it that i'm not sure yet
 oldbands <- read.dbf("X:\\brant_data\\brant data\\bandsch\\BBL DATA.DBF")
 oldbands <- oldbands %>% mutate_all(as.character)
-oldbandsA <- oldbands #***I don't think we actually need oldbandsA; but I'm keeping it in for now in case we need the original oldbands later on in the code
-oldbandsA$COUNT <- 1  #  without the count column. But if we don't then just change oldbandsA to oldbands$Count <- 1
-#***CHANGE THIS TO GROUP_BY
-oldbandsB <- aggregate(COUNT~METAL+BYEAR+BDAY+BMONTH+NAGE+NSEX+PERMIT, oldbandsA, sum) #This goes through and counts for times where a metal band occurs more than once and combines it into one row instead of multiple. It also gets rid of BLAT and BLONG.
-
-#Testing to make sure oldbandsB is the same between the SAS file and this r script
-# test <- oldbandsB %>% mutate_all(as.character)
-# SASoldbandsB <- SASoldbandsB %>% mutate_all(as.character)
-# differences <- anti_join(test, SASoldbandsB)
-# rm("test", "SASoldbandsB", "differences")
+oldbands <- unique(oldbands)
 
 #Import Recoveries and BSCPRE (Pre 86 plastics?)
 recovs <- read.csv("X:\\brant_data\\brant data\\harvest_csv\\brant_recoveries_9_28_15.csv", colClasses = "character")
@@ -79,41 +100,38 @@ names(EGG) <- paste0("EGG", substr(c("1986":"2017"), 3,4))
 SPRINGMST15 <- read.csv("X:\\brant_data\\brant data\\Spring resights_csv\\SPRINGMST2015.csv", colClasses = "character")
 WINTERMST16 <- read.csv("X:\\brant_data\\brant data\\winter resights_csv\\WINTER2016.csv", colClasses = "character")
 TOWER <- read.dbf("X:\\brant_data\\brant data\\BAND\\TOWBRD.DBF")
+TOWER <- TOWER %>% mutate_all(as.character)
 NBBAND <- read.dbf("X:\\brant_data\\brant data\\BAND\\NBBAND.DBF")
+NBBAND <- NBBAND %>% mutate_all(as.character)
 
 ###
 #BBL DATA
 ###
 
-oldstuff <- oldbandsB[,c("METAL", "PERMIT")]
+oldstuff <- oldbands[,c("METAL", "PERMIT")]
 oldstuff$BBLAGE <- NA
 oldstuff$BBLSEX <- NA
 
 #This for loop takes a while, change it?
 #Potentially use which to find the specific cases, then change it? Like we've done ahead, go find that. 
 #This follows codes from the BBL found here -> https://www.pwrc.usgs.gov/bbl/manual/age.cfm
-for(i in 1:nrow(oldbandsB)){
-  if(oldbandsB$NAGE[i] == "0" & !is.na(oldbandsB$NAGE[i])){oldstuff$BBLAGE[i] <- "U"}
-  if(oldbandsB$NAGE[i] == "1" & !is.na(oldbandsB$NAGE[i])){oldstuff$BBLAGE[i] <- "AHY"}
-  if(oldbandsB$NAGE[i] == "2" & !is.na(oldbandsB$NAGE[i])){oldstuff$BBLAGE[i] <- "HY"}
+for(i in 1:nrow(oldbands)){
+  if(oldbands$NAGE[i] == "0" & !is.na(oldbands$NAGE[i])){oldstuff$BBLAGE[i] <- "U"}
+  if(oldbands$NAGE[i] == "1" & !is.na(oldbands$NAGE[i])){oldstuff$BBLAGE[i] <- "AHY"}
+  if(oldbands$NAGE[i] == "2" & !is.na(oldbands$NAGE[i])){oldstuff$BBLAGE[i] <- "HY"}
   #There are no 3's because we never catch Brants as Juveniles. 
-  if(oldbandsB$NAGE[i] == "4" & !is.na(oldbandsB$NAGE[i])){oldstuff$BBLAGE[i] <- "L"}
-  if(oldbandsB$NAGE[i] == "5" & !is.na(oldbandsB$NAGE[i])){oldstuff$BBLAGE[i] <- "SY"}
-  if(oldbandsB$NAGE[i] == "6" & !is.na(oldbandsB$NAGE[i])){oldstuff$BBLAGE[i] <- "ASY"}
-  if(oldbandsB$NAGE[i] == "7" & !is.na(oldbandsB$NAGE[i])){oldstuff$BBLAGE[i] <- "TY"}
-  if(oldbandsB$NAGE[i] == "8" & !is.na(oldbandsB$NAGE[i])){oldstuff$BBLAGE[i] <- "ATY"}
+  if(oldbands$NAGE[i] == "4" & !is.na(oldbands$NAGE[i])){oldstuff$BBLAGE[i] <- "L"}
+  if(oldbands$NAGE[i] == "5" & !is.na(oldbands$NAGE[i])){oldstuff$BBLAGE[i] <- "SY"}
+  if(oldbands$NAGE[i] == "6" & !is.na(oldbands$NAGE[i])){oldstuff$BBLAGE[i] <- "ASY"}
+  if(oldbands$NAGE[i] == "7" & !is.na(oldbands$NAGE[i])){oldstuff$BBLAGE[i] <- "TY"}
+  if(oldbands$NAGE[i] == "8" & !is.na(oldbands$NAGE[i])){oldstuff$BBLAGE[i] <- "ATY"}
   
-  if(oldbandsB$NSEX[i] == "0" & !is.na(oldbandsB$NSEX[i])){oldstuff$BBLSEX[i] <- "U"} 
-  if(oldbandsB$NSEX[i] == "4" & !is.na(oldbandsB$NSEX[i])){oldstuff$BBLSEX[i] <- "M"} 
-  if(oldbandsB$NSEX[i] == "5" & !is.na(oldbandsB$NSEX[i])){oldstuff$BBLSEX[i] <- "F"}
+  if(oldbands$NSEX[i] == "0" & !is.na(oldbands$NSEX[i])){oldstuff$BBLSEX[i] <- "U"} 
+  if(oldbands$NSEX[i] == "4" & !is.na(oldbands$NSEX[i])){oldstuff$BBLSEX[i] <- "M"} 
+  if(oldbands$NSEX[i] == "5" & !is.na(oldbands$NSEX[i])){oldstuff$BBLSEX[i] <- "F"}
 }
-oldstuff$BBLYEAR <- oldbandsB$BYEAR
+oldstuff$BBLYEAR <- oldbands$BYEAR
 oldstuff$BBLSEX[which(is.na(oldstuff$BBLSEX))] <- ""
-
-#Testing to make sure it looks ok
-# SASOldstuff <- SASOldstuff %>% mutate_all(as.character)
-# differences <- anti_join(oldstuff, SASOldstuff)
-# rm("SASOldstuff", "differences")
 
 #PREA are all the banded birds that existed before our study. So we're just taking them into account 
 PREA <- merge(BSCPRE, oldstuff, by = "METAL", all = T)
@@ -123,7 +141,6 @@ PREA[newcols] <- '' #Creates new columns and just leaves them empty
 
 PREA$AGE <- as.character(PREA$AGE)
 PREA$SEX <- as.character(PREA$SEX)
-
 
 for(i in 1:nrow(PREA)){
   if(PREA$YEAR[i] == 1984 & !is.na(PREA$YEAR[i])){
@@ -140,7 +157,6 @@ for(i in 1:nrow(PREA)){
       PREA$SB85[i] <- PREA$SEX[i]
   }
 }
-
 keep <- c('METAL', 'PERMIT', "BBLAGE", "BBLSEX", "BBLYEAR", 'BAND','YEARB', 'AN84', 'SN84', 'AB85', 'SB85')
 PREA <- PREA[keep]
 
@@ -154,16 +170,6 @@ PREA <- PREA[keep]
 # 5)for 86, delete the NG86 and NH86 steps
 # 6)for 86, delete the NH86 and NH86 set statements in the NI86 datastep*/ 
 
-#This is a function that takes the mean across a group (like METAL), but it handles
-#   NA's better. If I didn't have this in instances where there is NA for the whole group I'd get NaN
-#   and would have to change that to NA in another step but this makes it easier.
-mean_ <- function(df, col){
-  dumb <- mean(col, na.rm = T, data = df)
-  if(is.nan(dumb)){
-    dumb <- NA
-  }
-  return(dumb)
-}
 
 ###
 #1986 Start
@@ -230,7 +236,7 @@ for(i in 1:nrow(BC86)){
         if(BC86$NEWMETAL[i] > 0 & !is.na(BC86$NEWMETAL[i])){
           #equivalent to BD86
             BS86 <- bind_rows(BS86, BC86[i,]) 
-            z <- which(BC86$METAL[i] == BS86$METAL)
+            z <- last(which(BC86$METAL[i] == BS86$METAL))
             BS86$LBAND[z] <- BC86$NEWPLASTIC[i]
             BS86$PR86[z] <- as.character(BC86$BAND[i]) 
             BS86$LMETAL[z] <- BC86$NEWMETAL[i]
@@ -240,7 +246,7 @@ for(i in 1:nrow(BC86)){
         }else if( is.na(BC86$NEWMETAL[i]) ){ #Changing "." to is.na
           #equivalent to BE86
             BS86 <- bind_rows(BS86, BC86[i,])
-            z <- which(BC86$METAL[i] == BS86$METAL)
+            z <- last(which(BC86$METAL[i] == BS86$METAL))
             BS86$LBAND[z] <- BC86$NEWPLASTIC[i]
             BS86$PR86[z] <- as.character(BC86$BAND[i]) 
             BS86$LMETAL[z] <- BC86$METAL[i]
@@ -252,7 +258,7 @@ for(i in 1:nrow(BC86)){
         if(BC86$NEWMETAL[i] > 0 & !is.na(BC86$NEWMETAL[i])){
           #equivalent to BF86
             BS86 <- bind_rows(BS86, BC86[i,]) 
-            z <- which(BC86$METAL[i] == BS86$METAL)
+            z <- last(which(BC86$METAL[i] == BS86$METAL))
             BS86$LBAND[z] <- BC86$BAND[i]
             BS86$PR86[z] <- NA#"    " 
             BS86$LMETAL[z] <- BC86$NEWMETAL[i]
@@ -262,7 +268,7 @@ for(i in 1:nrow(BC86)){
         }else if( is.na(BC86$NEWMETAL[i]) ){ #Changing from "." to is.na
            #equivalent to BG86
            BS86 <- bind_rows(BS86, BC86[i,])
-           z <- which(BC86$METAL[i] == BS86$METAL)
+           z <- last(which(BC86$METAL[i] == BS86$METAL))
            BS86$LBAND[z] <- BC86$BAND[i]
            BS86$PR86[z] <- NA#"    " 
            BS86$LMETAL[z] <- BC86$METAL[i]
@@ -277,7 +283,7 @@ for(i in 1:nrow(BC86)){
         if(BC86$NEWMETAL[i] > 0 & !is.na(BC86$NEWMETAL[i])){
           #equivalent to BH86
             BS86 <- bind_rows(BS86, BC86[i,]) 
-            z <- which(BC86$METAL[i] == BS86$METAL)
+            z <- last(which(BC86$METAL[i] == BS86$METAL))
             BS86$LBAND[z] <- BC86$NEWPLASTIC[i]
             BS86$PR86[z] <- "PBA "
             BS86$LMETAL[z] <- BC86$NEWMETAL[i]
@@ -287,7 +293,7 @@ for(i in 1:nrow(BC86)){
         }else if( is.na(BC86$NEWMETAL[i]) ){ #Changing == "." to is.na
           #equivalent to BI86
             BS86 <- bind_rows(BS86, BC86[i,]) 
-            z <- which(BC86$METAL[i] == BS86$METAL)
+            z <- last(which(BC86$METAL[i] == BS86$METAL))
             BS86$LBAND[z] <- BC86$NEWPLASTIC[i]
             BS86$PR86[z] <- "PBA "
             BS86$LMETAL[z] <- BC86$METAL[i]
@@ -299,8 +305,8 @@ for(i in 1:nrow(BC86)){
         if(BC86$NEWMETAL[i] > 0 & !is.na(BC86$NEWMETAL[i])){
           #equivalent to BJ86
             BS86 <- bind_rows(BS86, BC86[i,]) 
-            z <- which(BC86$METAL[i] == BS86$METAL)
-            BS86$LBAND[z] <- ""
+            z <- last(which(BC86$METAL[i] == BS86$METAL))
+            BS86$LBAND[z] <- NA#""
             BS86$PR86[z] <- NA#"    "
             BS86$LMETAL[z] <- BC86$NEWMETAL[i]
             BS86$mr86[z] <- BC86$METAL[i]
@@ -309,8 +315,8 @@ for(i in 1:nrow(BC86)){
         }else if( is.na(BC86$NEWMETAL[i]) ){ #Changing from "."
           #equivalent to BK86
             BS86 <- bind_rows(BS86, BC86[i,]) 
-            z <- which(BC86$METAL[i] == BS86$METAL)
-            BS86$LBAND[z] <- ""
+            z <- last(which(BC86$METAL[i] == BS86$METAL))
+            BS86$LBAND[z] <- NA#""
             BS86$PR86[z] <- NA#"    "
             BS86$LMETAL[z] <- BC86$METAL[i]
             BS86$mr86[z] <- NA #"."
@@ -328,7 +334,7 @@ for(i in 1:nrow(BC86)){
         if(BC86$NEWMETAL[i] > 0 & !is.na(BC86$NEWMETAL[i])){
           #equivalent to BL86
             BS86 <- bind_rows(BS86, BC86[i,]) 
-            z <- which(BC86$METAL[i] == BS86$METAL)
+            z <- last(which(BC86$METAL[i] == BS86$METAL))
             BS86$LBAND[z] <- BC86$NEWPLASTIC[i]
             BS86$PR86[z] <- as.character(BC86$BAND[i]) 
             BS86$LMETAL[z] <- BC86$NEWMETAL[i]
@@ -338,7 +344,7 @@ for(i in 1:nrow(BC86)){
         }else if( is.na(BC86$NEWMETAL[i]) ){ #Changing from "." to is.na
           #equivalent to BM86
             BS86 <- bind_rows(BS86, BC86[i,]) 
-            z <- which(BC86$METAL[i] == BS86$METAL)
+            z <- last(which(BC86$METAL[i] == BS86$METAL))
             BS86$LBAND[z] <- BC86$NEWPLASTIC[i]
             BS86$PR86[z] <- as.character(BC86$BAND[i]) 
             BS86$LMETAL[z] <- NA#"."
@@ -350,7 +356,7 @@ for(i in 1:nrow(BC86)){
         if(BC86$NEWMETAL[i] > 0 & !is.na(BC86$NEWMETAL[i])){
           #equivalent to BN86
             BS86 <- bind_rows(BS86, BC86[i,]) 
-            z <- which(BC86$METAL[i] == BS86$METAL)
+            z <- last(which(BC86$METAL[i] == BS86$METAL))
             BS86$LBAND[z] <- BC86$BAND[i]
             BS86$PR86[z] <- NA #"    "
             BS86$LMETAL[z] <- BC86$NEWMETAL[i]
@@ -360,7 +366,7 @@ for(i in 1:nrow(BC86)){
         }else if( is.na(BC86$NEWMETAL[i]) ){
           #equivalent to BO86
             BS86 <- bind_rows(BS86, BC86[i,]) 
-            z <- which(BC86$METAL[i] == BS86$METAL)
+            z <- last(which(BC86$METAL[i] == BS86$METAL))
             BS86$LBAND[z] <- BC86$BAND[i]
             BS86$PR86[z] <- NA #"    "
             BS86$LMETAL[z] <- NA #"."
@@ -375,7 +381,7 @@ for(i in 1:nrow(BC86)){
         if(BC86$NEWMETAL[i] > 0 & !is.na(BC86$NEWMETAL[i])){
           #equivalent to BP86
             BS86 <- bind_rows(BS86, BC86[i,]) 
-            z <- which(BC86$METAL[i] == BS86$METAL)
+            z <- last(which(BC86$METAL[i] == BS86$METAL))
             BS86$LBAND[z] <- BC86$NEWPLASTIC[i]
             BS86$PR86[z] <- "PBA "
             BS86$LMETAL[z] <- BC86$NEWMETAL[i]
@@ -385,7 +391,7 @@ for(i in 1:nrow(BC86)){
         }else if(is.na(BC86$NEWMETAL[i]) ){ #Changing from "." to is.na
           #equivalent to BQ86
             BS86 <- bind_rows(BS86, BC86[i,])
-            z <- which(BC86$METAL[i] == BS86$METAL)
+            z <- last(which(BC86$METAL[i] == BS86$METAL))
             BS86$LBAND[z] <- BC86$NEWPLASTIC[i]
             BS86$PR86[z] <- "PBA "
             BS86$LMETAL[z] <- NA #"."
@@ -397,8 +403,8 @@ for(i in 1:nrow(BC86)){
         if(BC86$NEWMETAL[i] > 0 & !is.na(BC86$NEWMETAL[i])){
           #equivalent to BR86
             BS86 <- bind_rows(BS86, BC86[i,]) 
-            z <- which(BC86$METAL[i] == BS86$METAL)
-            BS86$LBAND[z] <- ""
+            z <- last(which(BC86$METAL[i] == BS86$METAL))
+            BS86$LBAND[z] <- NA#""
             BS86$PR86[z] <- NA #"    " idk if this will fuck anything else up we'll see I guessssss
             BS86$LMETAL[z] <- BC86$NEWMETAL[i]
             BS86$mr86[z] <- "12345"
@@ -421,14 +427,15 @@ BS86   <- BS86  [, !names(BS86) %in% c("BAND", "NEWPLASTIC", "LBAND", "LMETAL")]
 
 BT86 <- BS86
 BT86$COUNT <- 1
-BT86 <- BT86[which(BT86$FILE == "BS"), c("METAL", "BAND86", "COUNT")]
-BU86 <- aggregate(COUNT~METAL, BT86, sum)
-BV86 <- aggregate(COUNT~BAND86, BT86, sum)
-
+BT86 <- BT86[BT86$FILE == "BS", c("METAL", "BAND86", "COUNT")]
+BU86 <- BT86 %>% group_by(METAL) %>% mutate(COUNT = sum(COUNT))
+CheckReplicates <- Mistakes(x = BU86, groupby = "METAL", yeardf = BA86, CheckReplicates)
+BV86 <- BT86 %>% group_by(BAND86) %>% mutate(COUNT = sum(COUNT))
+CheckReplicates <- Mistakes(BV86, groupby = "BAND86", yeardf = BA86, CheckReplicates)
 
 #check if a metal band occurs more than once and create a dataframe to flag it
 if(length(which(BU86$COUNT > 1)) != 0){
-  BW86 <-  BU86[which(BU86$COUNT > 1),]
+  BW86 <-  BU86[BU86$COUNT > 1,]
   BW86$COMMENTS <-  "This metal was put on 2x"
   BW86$YEAR <- "86"
   BW86 <- BX86[,!names(BX86) %in% "COUNT"]
@@ -436,7 +443,7 @@ if(length(which(BU86$COUNT > 1)) != 0){
 
 #Check if a plastic band appears more than once and create a dataframe to flag it
 if(length(which(BV86$COUNT > 1)) != 0){
-   BX86 <-  BV86[which(BV86$COUNT > 1),]
+   BX86 <-  BV86[BV86$COUNT > 1,]
    BX86$COMMENTS <-  "This plastic was put on 2x"
    BX86$YEAR <- "86"
    colnames(BX86)[colnames(BX86) == "BAND86"] <- "BAND"
@@ -444,7 +451,7 @@ if(length(which(BV86$COUNT > 1)) != 0){
 }else{BX86 <- setNames(data.frame(matrix(ncol = 3, nrow = 0)), c("COMMENTS", "BAND", "YEAR"))}
 
 
-DA86 <- BS86[which(BS86$DRIVE == "NEST"), ]
+DA86 <- BS86[BS86$DRIVE == "NEST", ]
 DA86$AGEB <- NA
 DA86$SEXB <- NA
 DA86$DATEB <- NA
@@ -463,7 +470,7 @@ DA86$Nt86 <- DA86$TAR; DA86$Nm86 <- DA86$MASS; DA86$COUNT <- 1; DA86$n86 <- DA86
 DA86 <- DA86[,!names(DA86) %in% c("AGE", "SEX","BSTAT", "FILE", "DRIVE", "COLONY", "BP", "YEAR", "CUL", "TAR", "MASS")]
 
 if(length(which(DA86$METAL == "" | is.na(DA86$METAL))) != 0){ #Changed from "."
-  DB86 <- DA86[which(DA86$METAL == "" | is.na(DA86$METAL)),]
+  DB86 <- DA86[(DA86$METAL == "" | is.na(DA86$METAL)),]
   DB86$COMMENTS <- "Bird was captured with plastic and realeased without metal"
   DB86$YEAR <- "86"
   colnames(DB86)[colnames(DB86) == "BAND86"] <- "BAND"
@@ -471,7 +478,7 @@ if(length(which(DA86$METAL == "" | is.na(DA86$METAL))) != 0){ #Changed from "."
 }else{DB86 <- setNames(data.frame(matrix(ncol = 3, nrow = 0)), c("BAND", "COMMENTS", "YEAR"))}
 
 #Create a dataframe with all the observations where metal is not "."
-DC86 <- DA86[which(DA86$METAL != "" & !is.na(DA86$METAL)),]
+DC86 <- DA86[DA86$METAL != "" & !is.na(DA86$METAL),]
 
 
 #***This is temporary, but may need to do something at the beginning so it's just nice the whole way through.
@@ -483,21 +490,25 @@ DC86$Nt86 <- as.integer(DC86$Nt86)
 #of Nc(cul) and Nt(tar) of the different instances, the min of the dates that occur, and we sum up how many times
 #it happened more than once with count.
 DD86 <- group_by(DC86, METAL) %>% summarise(meanNc86 = mean_(DC86, Nc86), meanNt86 = mean_(DC86, Nt86), 
-                                            DATE = min(DATE), COUNTsum = sum(COUNT))
+                                            DATE = min(DATE), COUNTsum = sum(COUNT)) #Changing from COUNTsum to COUNT
+#This one I think is ok to have replicates and to use summarise to combine. Because it includes Recap and BS data
+#   which we combined in BS, so we might have duplicate metals because of that and taking the mean between 
+#   them makes sense I think. 
+#CheckReplicates <- Mistakes(DD86, CheckReplicates)
 
 DE86 <- merge(DA86, DD86, by = c("METAL", "DATE"))
-DE86 <- DE86[which(!is.na(DE86$COUNTsum)), !names(DE86) %in% c("Nc86", "Nt86")]
+DE86 <- DE86[(!is.na(DE86$COUNTsum)), !names(DE86) %in% c("Nc86", "Nt86")]
 
 
 #DF86 <- group_by(DE86, METAL) %>% slice(sum(COUNT))
-DF86 <- DE86 %>% group_by(METAL) %>%
-  mutate(COUNT = sum(COUNT)) %>%
-  summarise_all(~last(.[which(!is.na(.) & (. != ""))]))
-DF86 <- DF86[,!names(DE86) %in% c("n86", "COUNTsum")]
+DF86 <- DE86 %>% group_by(METAL) %>% mutate(COUNT = sum(COUNTsum)) # %>% summarise_all(~last(.[which(!is.na(.) & (. != ""))]))
+CheckReplicates <- Mistakes(DF86, groupby="METAL", yeardf = BA86 ,CheckReplicates)
+DF86 <- DF86[!(DF86$COUNT > 1),!names(DF86) %in% c("n86", "COUNTsum")] 
+
 
 DG86 <- DF86 %>% rename(NC86 = meanNc86, NT86 = meanNt86)
 
-DH86 <- DG86[which(!is.na(DG86$NEWMETAL)),] #Changed from != "." to !is.na
+DH86 <- DG86[(!is.na(DG86$NEWMETAL)),] #Changed from != "." to !is.na
 if(nrow(DH86) == 0){DH86 <- DH86 %>% rename(DEL = METAL); DH86 <- DH86 %>% select(-DEL,DEL)}else{
   DH86$DEL <- "Y"
   DH86 <- DH86[,!names(DH86) %in% "METAL"]
@@ -514,14 +525,14 @@ DK86 <- bind_rows(DI86, DJ86)
 #Delete required metals from the PREA/old bands data
 if(nrow(DK86) == 0){DL86 <- AA86; DL86$DEL <- ""}else{ #Only runs if our DK df w/ the metals to deletes has stuff in it.
 DL86 <- merge(AA86, DK86, by = "METAL")                
-DL86 <- DL86[-which(DL86$DEL=="Y"),]                   #Deletes the columns we have set to delete
+DL86 <- DL86[!(DL86$DEL=="Y"),]                   #Deletes the columns we have set to delete
 }
 DL86$duma <- "1" #what's this dooo
 
 #Delete required metals from the subset of our BS/recap files. DG is the nest drives and BS files from that data.
 if(nrow(DK86) == 0){DM86 <- DG86; DM86$DEL <- ""}else{
   DM86 <- merge(DG86, DK86, by = "METAL")
-  DM86 <- DM86[-which(DM86$DEL == "Y")]
+  DM86 <- DM86[!(DM86$DEL == "Y")]
 }
 DM86$dumb <- "1"
 DM86 <- DM86 %>% rename(dumpr86 = PR86, webtag86 = WEBTAG, ntd86 = DATE, ageb86 = AGEB, sexb86 = SEXB, 
@@ -529,17 +540,13 @@ DM86 <- DM86 %>% rename(dumpr86 = PR86, webtag86 = WEBTAG, ntd86 = DATE, ageb86 
 #Merge our cleaned up dataframes together
 
 DN86 <- full_join(DM86, DL86) 
-#I think this was just dumb formatting shit Imma get rid of it if not including it doesn't fuck it all up
-# DN86$webtag86[which(is.na(DN86$webtag86))] <- ""
-# DN86$NEWMETAL[which(is.na(DN86$NEWMETAL))] <- "."
-# DN86$mr86[which(is.na(DN86$mr86))] <- "."
 
-DO86 <- DN86[which( is.na(DN86$duma) & DN86$dumb == "1"),] #Changed duma = "" to be is.na, since from my dumb test I think that's what it'd be
+DO86 <- DN86[( is.na(DN86$duma) & DN86$dumb == "1"),] #Changed duma = "" to be is.na, since from my dumb test I think that's what it'd be
 
 DP86 <- DH86 
 DP86$METAL <- DP86$mr86
 DQ86 <- full_join(AA86, DP86)
-DQ86 <- DQ86[which(DQ86$DEL == "Y"),!names(DQ86) %in% "METAL"]
+DQ86 <- DQ86[DQ86$DEL == "Y",!names(DQ86) %in% "METAL"]
 
 DR86 <- DQ86 %>% rename(dumpr86 = PR86, dbd86 = DATE, webtag86 = WEBTAG, yearb86 = YEARB, dateb86 = DATEB,
                         ageb86 = AGEB, sexb86 = SEXB)
@@ -667,7 +674,7 @@ DT86$WEBTAG <- DT86$WEBTAGB
 DT86 <- DT86[,!names(DT86) %in% c("BANDB", "WEBTAGB")]
 
 DU86 <- DT86[, !names(DT86) %in% "COMMENTS"]
-DV86 <- DS86[which(!is.na(DT86$COMMENTS)), c("COMMENTS", "METAL", "BAND", "BAND86", "WEBTAG","webtag86")]
+DV86 <- DS86[(!is.na(DT86$COMMENTS)), c("COMMENTS", "METAL", "BAND", "BAND86", "WEBTAG","webtag86")]
 
 
 ############################################################################
@@ -675,7 +682,7 @@ DV86 <- DS86[which(!is.na(DT86$COMMENTS)), c("COMMENTS", "METAL", "BAND", "BAND8
 ############################################################################
 NEST86 <- NEST86 %>% mutate_all(as.character)
 
-FA86 <- NEST86[which(!is.na(NEST86$BAND)),]
+FA86 <- NEST86[(!is.na(NEST86$BAND)),]
 FA86 <- FA86[FA86$BAND != "UM",]
 if(nrow(FA86) != 0){
   FA86$feband <- NA
@@ -684,16 +691,6 @@ if(nrow(FA86) != 0){
   LOC <- c("AUC", "BIG", "COL", "EC1", "EC2", "KIG", "MCN", "MCS", "BSL", "HSC", "IC1", "IC2", "IC3", 
            "IC4", "HSL", "SSL")
   for(i in 1:nrow(FA86)){
-    #***Should I pad it to three spaces? It makes sure the color is right but if there isn't a band then it's
-    #   four empty spaces which is a little weird.
-    # band <- str_pad(FA86$BAND[i], 3, side = "right") #Makes sure the bands are three spaces
-    # color <- str_replace_na(FA86$C1[i], " ")
-    # FA86$feband[i] <- paste0(band, color)
-    # 
-    # mate <- str_pad((str_replace_na(FA86$MATE[i], " ")), 3, side = 'right')
-    # mcolor <- str_replace_na(FA86$C2[i], " ")
-    # FA86$mateband86[i] <- paste0(mate, mcolor)
-    
     FA86$feband[i] <- paste0(trimws(str_replace_na(FA86$BAND[i], "")), trimws(str_replace_na(FA86$C1[i], "")))
     FA86$mateband86[i] <- paste0(trimws(str_replace_na(FA86$MATE[i], "")), trimws(str_replace_na(FA86$C2[i], "")))
     
@@ -707,21 +704,13 @@ if(nrow(FA86) != 0){
 }
 
 
-FB86 <- NEST86[which(!is.na(NEST86$MATE)),]
+FB86 <- NEST86[(!is.na(NEST86$MATE)),]
 FB86 <- FB86[FB86$MATE != "UM",]
 if(nrow(FB86) != 0){
   FB86$mateband86 <- NA
   FB86$maband <- NA
   for(i in 1:nrow(FB86)){
     #***I think what this for loop does is create an entry for the mate of the bird as well?? Otherwise I don't know why we do this 
-    # band <- str_pad(FB86$BAND[i], 3, side = "right") #Makes sure the bands are three spaces
-    # color <- str_replace_na(FB86$C1[i], " ")
-    # FB86$mateband86[i] <- paste0(band, color)
-    # 
-    # mate <- str_pad((str_replace_na(FB86$MATE[i], " ")), 3, side = 'right')
-    # mcolor <- str_replace_na(FB86$C2[i], " ")
-    # FB86$maband[i] <- paste0(mate, mcolor)
-    
     FA86$mateband86[i] <- paste0(trimws(str_replace_na(FA86$BAND[i], "")), trimws(str_replace_na(FA86$C1[i], "")))
     FA86$maband[i] <- paste0(trimws(str_replace_na(FA86$MATE[i], "")), trimws(str_replace_na(FA86$C2[i], "")))
     
@@ -745,12 +734,14 @@ if(nrow(FC86 != 0)){
 FC86 <- FC86[, !names(FC86) %in% c("feband", "maband")]
 FD86 <- FC86
 FD86$COUNT <- 1
-FE86 <- group_by(FD86, BAND, .drop = FALSE) %>% summarise(COUNT = sum(COUNT))
+FE86 <- group_by(FD86, BAND, .drop = FALSE) %>% summarise(COUNT = sum(COUNT)) #I don't remember why I included .drop = false here lol
+CheckReplicates <- Mistakes(x = FE86, groupby = "BAND", yeardf = BA86,CheckReplicates)
 
-FF86 <- FE86[which(FE86$COUNT == 1),]
+
+FF86 <- FE86[FE86$COUNT == 1,]
 FF86$DEL <- "N"
 
-FG86 <- FE86[which(FE86$COUNT > 1),]
+FG86 <- FE86[FE86$COUNT > 1,]
 if(nrow(FG86) != 0){FG86$DEL <- "Y"}else{
   FG86 <- setNames(data.frame(matrix(ncol = (length(colnames(FG86)) + 1), nrow = 0)), c(colnames(FG86), "DEL"))
   FG86 <- FG86 %>% mutate_all(as.character)
@@ -765,6 +756,7 @@ if(nrow(FI86) != 0){
 }
 
 FJ86 <- group_by(FI86, BAND) %>% summarise(dud = sum(COUNT))
+#CheckReplicates <- Mistakes(x = FJ86, groupby = BAND, yeardf = BA86,CheckReplicates) #I think this is caught above w/ FE
 
 FK86 <- FJ86[,"BAND"]
 if(nrow(FK86) != 0){
@@ -776,7 +768,7 @@ if(nrow(FK86) != 0){
  }
 
 FL86 <- full_join(FC86, FK86)
-FL86 <- FL86[which(FL86$DEL != "Y" | is.na(FL86$DEL)),] #Deletes columns with a Y in $DEL basically by pulling out everything that doesn't have a "Y" in the DEL col.
+FL86 <- FL86[(FL86$DEL != "Y" | is.na(FL86$DEL)),] #Deletes columns with a Y in $DEL basically by pulling out everything that doesn't have a "Y" in the DEL col.
 
 FM86 <- full_join(FL86, FK86)
 FM86$CS86 <- FM86$CS; FM86$CSC86 <- FM86$CSC; FM86$E86 <- FM86$E; FM86$F86 <- FM86$F; FM86$LO86 <- FM86$LO
@@ -788,7 +780,7 @@ FM86 <- FM86[, keep]
 
 FO86 <- FM86 %>% rename(REALBAND = BAND)
 FO86$BAND <- FO86$mateband86
-FO86 <- FO86[-which(FO86$BAND == "UM" | FO86$BAND == "    "),]
+FO86 <- FO86[!(FO86$BAND == "UM" | FO86$BAND == ""),]
 if(nrow(FO86) != 0){FO86$DUM <- "Y"}else{
   FO86 <- setNames(data.frame(matrix(ncol = (length(colnames(FO86)) + 1), nrow = 0)), c(colnames(FO86), "DUM"))
   FO86 <- FO86 %>% mutate_all(as.character)
@@ -840,7 +832,7 @@ if(nrow(FT86) != 0){
 #It's H time!!! 
 ###
 
-HA86 <- BS86[which(BS86$DRIVE != "NEST" | is.na(BS86$DRIVE)),]
+HA86 <- BS86[(BS86$DRIVE != "NEST" | is.na(BS86$DRIVE)),]
 HA86$AGEB <- NA; HA86$SEXB <- NA; HA86$DATEB <- NA; HA86$YEARB <- NA
 for(i in 1:nrow(HA86)){
   if(HA86$FILE[i] == "BS"){
@@ -854,7 +846,7 @@ HA86$BD86[which(HA86$COLONY == "TUT")] <- HA86$DRIVE[which(HA86$COLONY == "TUT")
 HA86$BD86[which(HA86$COLONY != "TUT" | is.na(HA86$COLONY))] <- HA86$COLONY[which(HA86$COLONY != "TUT"| is.na(HA86$COLONY))]
 HA86 <- HA86[, !names(HA86) %in% c("BSTAT", "FILE", "DRIVE", "COLONY", "YEAR")]
 
-HB86 <- HA86[which(HA86$METAL == "" | is.na(HA86$METAL)), "BAND86", drop = FALSE] #Changed from "." to "" 
+HB86 <- HA86[(HA86$METAL == "" | is.na(HA86$METAL)), "BAND86", drop = FALSE] #Changed from "." to "" 
 HB86 <- HB86 %>% rename(BAND = BAND86)
 if(nrow(HB86) != 0){
   HB86$COMMENTS <- "Bird was captured with plastic and released without metal"
@@ -864,23 +856,23 @@ if(nrow(HB86) != 0){
   HB86 <- HB86 %>% mutate_all(as.character())
 }
 
-HC86 <- HA86[which(HA86$METAL != "" & !is.na(HA86$METAL)),] #Changed from "." to ""
+HC86 <- HA86[(HA86$METAL != "" & !is.na(HA86$METAL)),] #Changed from "." to ""
 HC86$Bc86 <- as.numeric(HC86$Bc86)
 HC86$Bt86 <- as.numeric(HC86$Bt86)
+#I'm not sure about this one either on if I should pull out duplicates or not.
 HD86 <- group_by(HC86, METAL) %>% summarise(meanbc86 = mean_(HC86, Bc86), meanbt86 = mean_(HC86,Bt86),
                                             DATE = min(DATE), COUNTsum = sum(COUNT))
 
 HE86 <- full_join(HA86, HD86)
-HE86 <- HE86[which(!is.na(HE86$COUNTsum)), !names(HE86) %in% c("Bc86", "Bt86")]
+HE86 <- HE86[(!is.na(HE86$COUNTsum)), !names(HE86) %in% c("Bc86", "Bt86")]
 
 HF86 <- HE86[,!names(HE86) %in% "COUNTsum"]
-#HF86 <- group_by(HE86, METAL) %>% slice(COUNT = sum(COUNT))
-HF86 <- HF86 %>% group_by(METAL) %>%
-  mutate(COUNT = sum(COUNT)) %>%
-  summarise_all(~last(.[which(!is.na(.) & (. != ""))]))
+HF86 <- HF86 %>% group_by(METAL) %>% mutate(COUNT = sum(COUNT)) #%>% summarise_all(~last(.[which(!is.na(.) & (. != ""))]))
+CheckReplicates <- Mistakes(HF86, groupby = "METAL", yeardf = BA86, CheckReplicates)
+HF86 <- HF86[!(HF86$COUNT > 1),]
 
 HG86 <- HF86 %>% rename(BC86 = meanbc86, BT86 = meanbt86)
-HH86 <- HG86[which(!is.na(HG86$NEWMETAL) ), !names(HG86) %in% "METAL"] #changed from !="." to !is.na
+HH86 <- HG86[(!is.na(HG86$NEWMETAL) ), !names(HG86) %in% "METAL"] #changed from !="." to !is.na
 HH86$DEL <- "Y"
 
 HI86 <- HH86[,c("mr86","DEL")] %>% rename(METAL = mr86)
@@ -906,7 +898,7 @@ HN86 <- full_join(HL86, HM86, by = c("METAL")) %>%
          ) %>%
   select(-mr86.x, -mr86.y, -webtag86.x, -webtag86.y, -BAND86.x, -BAND86.y, -dbd86.x, -dbd86.y, -DEL.x, -DEL.y)
 
-HO86 <- HN86[which(is.na(HN86$duma) & HN86$dumb == "1"),]
+HO86 <- HN86[(is.na(HN86$duma) & HN86$dumb == "1"),]
 HP86 <- HH86 
 HP86$METAL <- HP86$mr86
 
@@ -945,7 +937,8 @@ HS86$WEBTAGB <- NA #This makes it logical
 HS86$COMMENTS <- NA
 
 #Takes a Hot Second: Do something different?
-#*** For some reason this is turning webtag class into logical, maybe because I assign it to NA first?
+#*** For some reason this is turning webtag class into logical, maybe because I assign it to NA first?'
+#   It is that do as.character(NA)
 for(i in 1:nrow(HS86)){
   #RP
   if(!is.na(HS86$dumpr86[i]) & !is.na(HS86$PR86[i])){HS86$RP86[i] <- HS86$PR86[i]}else{
@@ -968,7 +961,7 @@ for(i in 1:nrow(HS86)){
     HS86$COMMENTS[i] <- "Sex at banding does not agree with BBL and BSC"
   }
   if(!is.na(HS86$sexb86[i]) & is.na(HS86$SEXB[i]) ){HS86$SEX[i] <- HS86$sexb86[i]}
-  if(is.na(HS86$ageb86[i]) & !is.na(HS86$AGEB[i]) ){HS86$SEX[i] <- HS86$SEXB[i]}
+  if(is.na(HS86$sexb86[i]) & !is.na(HS86$SEXB[i]) ){HS86$SEX[i] <- HS86$SEXB[i]}
   
   #DATE
   if(!is.na(HS86$dateb86[i]) & !is.na(HS86$DATEB[i]) & HS86$dateb86[i] == HS86$DATEB[i]){HS86$DATE[i] <- HS86$DATEB[i]}
@@ -1020,13 +1013,13 @@ HS86 <- HS86 %>% mutate_if(is.logical, as.character)
 HT86 <- HS86 %>% rename(AGEB = AGE, SEXB = SEX, DATEB = DATE, YEARB = YEAR, BAND = BANDB, WEBTAG = WEBTAGB,
                         PR86 = RP86)
 HU86 <- HT86[,!names(HT86) %in% "COMMENTS"]
-HV86 <- HS86[which(!is.na(HT86$COMMENTS)), c('COMMENTS', "METAL")] #, 'BAND', 'WEBTAG'
+HV86 <- HS86[(!is.na(HT86$COMMENTS)), c('COMMENTS', "METAL")] #, 'BAND', 'WEBTAG'
 
 ###
 #The J's!!!! Egg Data!!!
 ###
 
-JA86 <- EGG86[which(EGG86$TAG != ""),] #I think "" is right here, so far I have seen "" but no NA's so this seems good for now
+JA86 <- EGG86[(EGG86$TAG != ""),] #I think "" is right here, so far I have seen "" but no NA's so this seems good for now
 keep <- c("COUNT", "NEST", "EGG", 'TAGD', "STATE", "DATE", "TAG")
 if(nrow(JA86) != 0){
   JA86$EGG <- JA86$EGGB 
@@ -1038,7 +1031,7 @@ if(nrow(JA86) != 0){
   JA86 <- JA86 %>% mutate_all(as.character)
 }
 
-JB86 <- EGG86[which(EGG86$LENGTH != "" | EGG86$WIDTH != ""),]
+JB86 <- EGG86[(EGG86$LENGTH != "" | EGG86$WIDTH != ""),]
 keep <- c("NEST", "EGG", "LENGTH", "WIDTH")
 if(nrow(JA86) != 0){
   JB86$EGG <- JB86$EGGA
@@ -1056,9 +1049,12 @@ JC86$L <- JC86$LENGTH
 JC86$W <- JC86$WIDTH
 JC86 <- JC86[,!names(JC86) %in% c("TAGD", "LENGTH", "WIDTH", "TAG")]
 
-JC86$COUNT <- as.numeric(JC86$COUNT)
-JD86 <- JC86 %>% group_by(WEBTAG, NEST, EGG) %>% summarise(MD = mean_(JC86, D), ML = mean_(JC86, L), MW = mean_(JC86,W), C = sum(COUNT))
-#***Gives a warning rn but I think it's just because JC is empty. Check later when it's not. 
+JC86 <- JC86 %>% mutate_at(vars(D, L, W, COUNT), as.numeric)
+
+
+JD86 <- JC86 %>% group_by(WEBTAG, NEST, EGG) %>% summarise(MD = mean_(JC86, D), ML = mean_(JC86, L), 
+                                                           MW = mean_(JC86,W), C = sum(COUNT))
+#***Come back to once you do JD87 to decide if you need to add a Mistakes()
 
 JE86 <- JD86
 JE86 <- JE86 %>% rename(WTD = MD, EGG1 = ML, EGGW = MW)
@@ -1066,14 +1062,16 @@ if(nrow(JE86) != 0){
   JE86$COUNT <- 1
 }else{
   JE86 <- setNames(data.frame(matrix(ncol = 8, nrow = 0)), c(colnames(JE86), "COUNT"))
-  JE86 <- JE86 %>% mutate_all(as.character)
+  JE86 <- JE86 %>% mutate_if(is.logical, as.character)
+  JE86$COUNT <- as.numeric(JE86$COUNT)
 }
 JE86 <- JE86[, !names(JE86) %in% "C"]
 
-JE86$COUNT <- as.numeric(JE86$COUNT)
-JF86 <- group_by(JE86, WEBTAG) %>% summarise(COUNT = sum(COUNT))
+JF86 <- group_by(JE86, WEBTAG) %>% mutate(COUNT = sum(COUNT))
+CheckReplicates <- Mistakes(x = JF86, groupby = "WEBTAG", yeardf = BA86, CheckReplicates)
+JF86 <- JF86[!(JF86$COUNT > 1),]
 
-JG86 <- JF86[which(JF86$COUNT > 1), "WEBTAG"]
+JG86 <- JF86[(JF86$COUNT > 1), "WEBTAG"]
 if(nrow(JG86) != 0){
 JG86$DEL <- "Y"
 }else{
@@ -1083,11 +1081,10 @@ JG86$DEL <- "Y"
 
 JH86 <- JA86 %>% rename(WEBTAG = TAG)
 JI86 <- full_join(JG86, JH86)
-JI86 <- JI86[-which(JI86$DEL == "Y"), !names(JI86) %in% "DEL"] #Not sure if this will work but I've decided it does lol
+JI86 <- JI86[-which(JI86$DEL == "Y"), !names(JI86) %in% "DEL"] 
 
 JJ86 <- full_join(JH86, JG86)
-JJ86 <- JJ86[which(JJ86$DEL == "Y"),]
-keep <- c("WEBTAG", "NEST", "YEAR", "COMMENTS")
+JJ86 <- JJ86[which(JJ86$DEL == "Y"),c("WEBTAG", "NEST")]
 if(nrow(JJ86) != 0){
   JJ86$YEAR <- "86"
   JJ86$COMMENTS <- "This webtag put on 2 different eggs"
@@ -1117,39 +1114,54 @@ LA86 <- FM86
 LA86$dum <- 1
 
 LB86 <- group_by(LA86, NEST) %>% summarise(dum = sum(dum))
+#This about this one, can't just name it Count, maybe take multiple col names? Another input lmao?
+#CheckReplicates <- Mistakes(x = LB86, groupby = "NEST", yeardf = BA86, CheckReplicates)
 LC86 <- NEST86
+
 LD86 <- full_join(LC86, LB86)
 LD86 <- LD86[which(LD86$dum > 0 & LD86$NEST != ""),]
+LD86$PARENT1P <- as.character(NA)
+LD86$PARENT2P <- as.character(NA)
 for(i in 1:nrow(LD86)){
-  band <- str_pad(LD86$BAND[i], 3, side = "right") #Makes sure the bands are three spaces
-  color <- str_replace_na(LD86$C1[i], " ")
-  LD86$PARENT1P[i] <- paste0(band, color)
+  #Some cleaning up could happen here: what happens if there's a band but no color, should it be AO2_ or just AO2?
+  # band <- str_pad(LD86$BAND[i], 3, side = "right") 
+  # color <- str_replace_na(LD86$C1[i], "")
   
-  band2 <- str_pad((str_replace_na(LD86$MATE[i], " ")), 3, side = 'right')
-  color2 <- str_replace_na(LD86$C2[i], " ")
-  LD86$PARENT2P[i] <- paste0(band2, color2)
+  if(!is.na(LD86$BAND[i])){
+    color <- str_replace_na(LD86$C1[i], "")
+    LD86$PARENT1P[i] <- paste0(LD86$BAND[i], color)
+  }
+  
+  if(!is.na(LD86$MATE[i])){
+    color2 <- str_replace_na(LD86$C2[i], "")
+    LD86$PARENT2P[i] <- paste0(LD86$MATE[i], color2)
+  }
+  
+  # band2 <- str_pad((str_replace_na(LD86$MATE[i], " ")), 3, side = 'right')
+  # color2 <- str_replace_na(LD86$C2[i], "")
 }
 LD86 <- LD86[,c("NEST", "PARENT1P", "PARENT2P")]
 
-LE86 <- LD86[which(LD86$PARENT1P != "    "),]
+LE86 <- LD86[(!is.na(LD86$PARENT1P)),] 
 LE86$BAND <- LE86$PARENT1P
 LE86 <- LE86[,c("NEST", "BAND")]
 
-LF86 <- LD86[which(LD86$PARENT2P != "    "),]
+LF86 <- LD86[(!is.na(LD86$PARENT2P)),]
 LF86$BAND <- LF86$PARENT2P
 LF86 <- LF86[,c("NEST", "BAND")]
-LG86 <- DU86[which(!is.na(DU86$BAND) & DU86$BAND != ""), c("BAND", "METAL")] %>% rename(PARENTM = METAL)
+
+LG86 <- DU86[(!is.na(DU86$BAND) & DU86$BAND != ""), c("BAND", "METAL")] %>% rename(PARENTM = METAL)
 
 LH86 <- full_join(LG86, LE86)
-LH86 <- LH86[which(!is.na(LH86$NEST)),]  
+LH86 <- LH86[(!is.na(LH86$NEST)),]  
 LH86$PARENTM[which(LH86$BAND == "UM")] <- "UM"
-LH86$PARENTM[which(LH86$PARENTM == "    ")] <- "banded"
+LH86$PARENTM[which(LH86$PARENTM == "")] <- "banded"
 LH86 <- LH86 %>% rename(PARENT1M = PARENTM, PARENT1P = BAND)
 
 LI86 <- full_join(LG86, LF86)
-LI86 <- LI86[which(!is.na(LI86$NEST)),] 
+LI86 <- LI86[(!is.na(LI86$NEST)),] 
 LI86$PARENTM[which(LI86$BAND == "UM")] <- "UM"
-LI86$PARENTM[which(LI86$PARENTM == "    ")] <- "banded"
+LI86$PARENTM[which(LI86$PARENTM == "")] <- "banded"
 LI86 <- LI86 %>% rename(PARENT2M = PARENTM, PARENT2P = BAND)
 
 LJ86 <- full_join(LH86, LI86)
@@ -1182,10 +1194,10 @@ if(nrow(NB86) != 0){
   NB86 <- NB86 %>% mutate_all(as.character) 
 }
 
-NC86 <- NB86[which(NB86$KEEP == "Y"),]
-ND86 <- NB86[which(NB86$AGEB == "L" & NB86$KEEP == "Y"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
+NC86 <- NB86[(NB86$KEEP == "Y"),]
+ND86 <- NB86[(NB86$AGEB == "L" & NB86$KEEP == "Y"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
 
-NE86 <- NB86[which(NB86$AGEB == "SY"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
+NE86 <- NB86[(NB86$AGEB == "SY"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
 if(nrow(NE86) != 0){
   NE86$DUMA <- "Y"
 }else{
@@ -1193,7 +1205,7 @@ if(nrow(NE86) != 0){
   NE86 <- NE86 %>% mutate_all(as.character)
 }
 
-NF86 <- NB86[which(NB86$AGEB == "ASY"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
+NF86 <- NB86[(NB86$AGEB == "ASY"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
 if(nrow(NF86) != 0){
   NF86$DUMA <- "Y"
 }else{
@@ -1250,9 +1262,9 @@ for(i in 1:nrow(NJ86)){
     NJ86$PARENT2M[i] <- NJ86$PARENT2M86[i]
   }
 }
-NJ86$TAGD <- "   "
+NJ86$TAGD <- "   " #***Why do we do this
 
-NK86 <- NJ86[which(!is.na(NJ86$COMMENTS)),]
+NK86 <- NJ86[(!is.na(NJ86$COMMENTS)),]
 if(nrow(NK86) != 0){
   NK86$YEAR <- "86"
   NK86 <- NK86[,c("METAL", "BAND", "COMMENTS", "YEAR", "WEBTAG")]
@@ -1279,7 +1291,7 @@ AB87 <- LL86
 AC87 <- LM86
 #######
 
-#rm(list = grep(pattern = "*86", names(.GlobalEnv), value = TRUE))
+rm(list = grep(pattern = "*86", names(.GlobalEnv), value = TRUE))
 
 BA87 <- bsc87
 BA87$FILE <- "BS" #Tells us what file this information came from. 
@@ -1295,7 +1307,6 @@ for(i in nrow(BA87):1){
 }
 
 BA87 <- BA87[ , !names(BA87) %in% c("NINTHPRIM","BODYLEN", 'SAMPLENO', 'COMMENTS', 'NEWPLASTIC', 'NEWMETAL')] #Deletes these rows
-BA87 <- BA87[order(BA87$METAL),]
 
 BB87 <- recap87
 BB87$FILE <- "RE"
@@ -1305,11 +1316,10 @@ for(i in nrow(BB87):1){
   } 
 }
 BB87 <- BB87[ , !names(BB87) %in% c("NINTHPRIM","BODYLEN", 'SAMPLENO', 'COMMENTS', 'RE_STAT')]
-BB87 <- BB87[order(BB87$METAL),]
 
 BC87 <- bind_rows(BA87, BB87)
 BC87$NEWMETAL[which((is.na(BC87$NEWMETAL)| BC87$NEWMETAL == "" )) ] <- NA
-BC87$NEWPLASTIC[which(BC87$NEWPLASTIC == "")] <- NA
+BC87$NEWPLASTIC[(BC87$NEWPLASTIC == "")] <- NA
 
 ###
 #Checking for replacement metal and plastic bands
@@ -1331,7 +1341,7 @@ for(i in 1:nrow(BC87)){
         if(BC87$NEWMETAL[i] > 0 & !is.na(BC87$NEWMETAL[i])){
           #equivalent to BD87
           BS87 <- bind_rows(BS87, BC87[i,]) 
-          z <- which(BC87$METAL[i] == BS87$METAL)
+          z <- last(which(BC87$METAL[i] == BS87$METAL))
           BS87$LBAND[z] <- BC87$NEWPLASTIC[i]
           BS87$PR87[z] <- as.character(BC87$BAND[i]) 
           BS87$LMETAL[z] <- BC87$NEWMETAL[i]
@@ -1341,7 +1351,7 @@ for(i in 1:nrow(BC87)){
         }else if( is.na(BC87$NEWMETAL[i]) ){ #Changing "." to is.na
           #equivalent to BE87
           BS87 <- bind_rows(BS87, BC87[i,])
-          z <- which(BC87$METAL[i] == BS87$METAL)
+          z <- last(which(BC87$METAL[i] == BS87$METAL))
           BS87$LBAND[z] <- BC87$NEWPLASTIC[i]
           BS87$PR87[z] <- as.character(BC87$BAND[i]) 
           BS87$LMETAL[z] <- BC87$METAL[i]
@@ -1353,7 +1363,7 @@ for(i in 1:nrow(BC87)){
         if(BC87$NEWMETAL[i] > 0 & !is.na(BC87$NEWMETAL[i])){
           #equivalent to BF87
           BS87 <- bind_rows(BS87, BC87[i,]) 
-          z <- which(BC87$METAL[i] == BS87$METAL)
+          z <- last(which(BC87$METAL[i] == BS87$METAL))
           BS87$LBAND[z] <- BC87$BAND[i]
           BS87$PR87[z] <- NA#"    " 
           BS87$LMETAL[z] <- BC87$NEWMETAL[i]
@@ -1363,7 +1373,7 @@ for(i in 1:nrow(BC87)){
         }else if( is.na(BC87$NEWMETAL[i]) ){ #Changing from "." to is.na
           #equivalent to BG87
           BS87 <- bind_rows(BS87, BC87[i,])
-          z <- which(BC87$METAL[i] == BS87$METAL)
+          z <- last(which(BC87$METAL[i] == BS87$METAL)) #since this is updating as we go, theoretically if I do last it should work??
           BS87$LBAND[z] <- BC87$BAND[i]
           BS87$PR87[z] <- NA#"    " 
           BS87$LMETAL[z] <- BC87$METAL[i]
@@ -1378,7 +1388,7 @@ for(i in 1:nrow(BC87)){
         if(BC87$NEWMETAL[i] > 0 & !is.na(BC87$NEWMETAL[i])){
           #equivalent to BH87
           BS87 <- bind_rows(BS87, BC87[i,]) 
-          z <- which(BC87$METAL[i] == BS87$METAL)
+          z <- last(which(BC87$METAL[i] == BS87$METAL))
           BS87$LBAND[z] <- BC87$NEWPLASTIC[i]
           BS87$PR87[z] <- "PBA "
           BS87$LMETAL[z] <- BC87$NEWMETAL[i]
@@ -1388,7 +1398,7 @@ for(i in 1:nrow(BC87)){
         }else if( is.na(BC87$NEWMETAL[i]) ){ #Changing == "." to is.na
           #equivalent to BI87
           BS87 <- bind_rows(BS87, BC87[i,]) 
-          z <- which(BC87$METAL[i] == BS87$METAL)
+          z <- last(which(BC87$METAL[i] == BS87$METAL))
           BS87$LBAND[z] <- BC87$NEWPLASTIC[i]
           BS87$PR87[z] <- "PBA "
           BS87$LMETAL[z] <- BC87$METAL[i]
@@ -1400,8 +1410,8 @@ for(i in 1:nrow(BC87)){
         if(BC87$NEWMETAL[i] > 0 & !is.na(BC87$NEWMETAL[i])){
           #equivalent to BJ87
           BS87 <- bind_rows(BS87, BC87[i,]) 
-          z <- which(BC87$METAL[i] == BS87$METAL)
-          BS87$LBAND[z] <- ""
+          z <- last(which(BC87$METAL[i] == BS87$METAL))
+          BS87$LBAND[z] <- NA#""
           BS87$PR87[z] <- NA#"    "
           BS87$LMETAL[z] <- BC87$NEWMETAL[i]
           BS87$mr87[z] <- BC87$METAL[i]
@@ -1410,8 +1420,8 @@ for(i in 1:nrow(BC87)){
         }else if( is.na(BC87$NEWMETAL[i]) ){ #Changing from "."
           #equivalent to BK87
           BS87 <- bind_rows(BS87, BC87[i,]) 
-          z <- which(BC87$METAL[i] == BS87$METAL)
-          BS87$LBAND[z] <- ""
+          z <- last(which(BC87$METAL[i] == BS87$METAL))
+          BS87$LBAND[z] <- NA#""
           BS87$PR87[z] <- NA#"    "
           BS87$LMETAL[z] <- BC87$METAL[i]
           BS87$mr87[z] <- NA #"."
@@ -1429,7 +1439,7 @@ for(i in 1:nrow(BC87)){
         if(BC87$NEWMETAL[i] > 0 & !is.na(BC87$NEWMETAL[i])){
           #equivalent to BL87
           BS87 <- bind_rows(BS87, BC87[i,]) 
-          z <- which(BC87$METAL[i] == BS87$METAL)
+          z <- last(which(BC87$METAL[i] == BS87$METAL))
           BS87$LBAND[z] <- BC87$NEWPLASTIC[i]
           BS87$PR87[z] <- as.character(BC87$BAND[i]) 
           BS87$LMETAL[z] <- BC87$NEWMETAL[i]
@@ -1439,7 +1449,7 @@ for(i in 1:nrow(BC87)){
         }else if( is.na(BC87$NEWMETAL[i]) ){ #Changing from "." to is.na
           #equivalent to BM87
           BS87 <- bind_rows(BS87, BC87[i,]) 
-          z <- which(BC87$METAL[i] == BS87$METAL)
+          z <- last(which(BC87$METAL[i] == BS87$METAL))
           BS87$LBAND[z] <- BC87$NEWPLASTIC[i]
           BS87$PR87[z] <- as.character(BC87$BAND[i]) 
           BS87$LMETAL[z] <- NA#"."
@@ -1451,7 +1461,7 @@ for(i in 1:nrow(BC87)){
         if(BC87$NEWMETAL[i] > 0 & !is.na(BC87$NEWMETAL[i])){
           #equivalent to BN87
           BS87 <- bind_rows(BS87, BC87[i,]) 
-          z <- which(BC87$METAL[i] == BS87$METAL)
+          z <- last(which(BC87$METAL[i] == BS87$METAL))
           BS87$LBAND[z] <- BC87$BAND[i]
           BS87$PR87[z] <- NA #"    "
           BS87$LMETAL[z] <- BC87$NEWMETAL[i]
@@ -1461,7 +1471,7 @@ for(i in 1:nrow(BC87)){
         }else if( is.na(BC87$NEWMETAL[i]) ){
           #equivalent to BO87
           BS87 <- bind_rows(BS87, BC87[i,]) 
-          z <- which(BC87$METAL[i] == BS87$METAL)
+          z <- last(which(BC87$METAL[i] == BS87$METAL))
           BS87$LBAND[z] <- BC87$BAND[i]
           BS87$PR87[z] <- NA #"    "
           BS87$LMETAL[z] <- NA #"."
@@ -1476,7 +1486,7 @@ for(i in 1:nrow(BC87)){
         if(BC87$NEWMETAL[i] > 0 & !is.na(BC87$NEWMETAL[i])){
           #equivalent to BP87
           BS87 <- bind_rows(BS87, BC87[i,]) 
-          z <- which(BC87$METAL[i] == BS87$METAL)
+          z <- last(which(BC87$METAL[i] == BS87$METAL))
           BS87$LBAND[z] <- BC87$NEWPLASTIC[i]
           BS87$PR87[z] <- "PBA "
           BS87$LMETAL[z] <- BC87$NEWMETAL[i]
@@ -1486,7 +1496,7 @@ for(i in 1:nrow(BC87)){
         }else if(is.na(BC87$NEWMETAL[i]) ){ #Changing from "." to is.na
           #equivalent to BQ87
           BS87 <- bind_rows(BS87, BC87[i,])
-          z <- which(BC87$METAL[i] == BS87$METAL)
+          z <- last(which(BC87$METAL[i] == BS87$METAL))
           BS87$LBAND[z] <- BC87$NEWPLASTIC[i]
           BS87$PR87[z] <- "PBA "
           BS87$LMETAL[z] <- NA #"."
@@ -1498,8 +1508,8 @@ for(i in 1:nrow(BC87)){
         if(BC87$NEWMETAL[i] > 0 & !is.na(BC87$NEWMETAL[i])){
           #equivalent to BR87
           BS87 <- bind_rows(BS87, BC87[i,]) 
-          z <- which(BC87$METAL[i] == BS87$METAL)
-          BS87$LBAND[z] <- ""
+          z <- last(which(BC87$METAL[i] == BS87$METAL))
+          BS87$LBAND[z] <- NA#""
           BS87$PR87[z] <- NA #"    " idk if this will fuck anything else up we'll see I guessssss
           BS87$LMETAL[z] <- BC87$NEWMETAL[i]
           BS87$mr87[z] <- "12345"
@@ -1521,14 +1531,16 @@ BS87 <- BS87[,!names(BS87) %in% c("LBAND", "LMETAL")] #We don't do anything with
 
 BT87 <- BS87
 BT87$COUNT <- 1
-BT87 <- BT87[which(BT87$FILE == "BS"), c("METAL", "BAND87", "COUNT")]
-BU87 <- aggregate(COUNT~METAL, BT87, sum)
-BV87 <- aggregate(COUNT~BAND87, BT87, sum)
+BT87 <- BT87[(BT87$FILE == "BS"), c("METAL", "BAND87", "COUNT")]
+BU87 <- BT87 %>% group_by(METAL) %>% mutate(COUNT = sum(COUNT))
+CheckReplicates <- Mistakes(x = BU87, groupby = "METAL", yeardf = BA87, CheckReplicates)
+BV87 <- BT87 %>% group_by(BAND87) %>% mutate(COUNT = sum(COUNT))
+CheckReplicates <- Mistakes(x = BV87, groupby = "BAND87", yeardf = BA87, CheckReplicates)
 
 #Different from 86
 #check if a metal band occurs more than once and create a dataframe to flag it
 if(length(which(BU87$COUNT > 1)) != 0){
-  BW87 <-  BU87[which(BU87$COUNT > 1),]
+  BW87 <-  BU87[(BU87$COUNT > 1),]
   BW87$COMMENTS <-  "This metal was put on 2x"
   BW87$YEAR <- "87"
   BW87 <- BX87[,!names(BX87) %in% "COUNT"]
@@ -1536,7 +1548,7 @@ if(length(which(BU87$COUNT > 1)) != 0){
 
 #Check if a plastic band appears more than once and create a dataframe to flag it
 if(length(which(BV87$COUNT > 1)) != 0){
-  BX87 <-  BV87[which(BV87$COUNT > 1),]
+  BX87 <-  BV87[(BV87$COUNT > 1),]
   BX87$COMMENTS <-  "This plastic was put on 2x"
   BX87$YEAR <- "87"
   colnames(BX87)[colnames(BX87) == "BAND87"] <- "BAND"
@@ -1544,7 +1556,7 @@ if(length(which(BV87$COUNT > 1)) != 0){
 }else{BX87 <- setNames(data.frame(matrix(ncol = 3, nrow = 0)), c("COMMENTS", "BAND", "YEAR"))}
 
 
-DA87 <- BS87[which(BS87$DRIVE == "NEST"), ]
+DA87 <- BS87[(BS87$DRIVE == "NEST"), ]
 DA87$AGEB <- NA
 DA87$SEXB <- NA
 DA87$DATEB <- NA
@@ -1563,7 +1575,7 @@ DA87$Nt87 <- DA87$TAR; DA87$Nm87 <- DA87$MASS; DA87$COUNT <- 1; DA87$n87 <- DA87
 DA87 <- DA87[,!names(DA87) %in% c("AGE", "SEX","BSTAT", "FILE", "DRIVE", "COLONY", "BP", "YEAR", "CUL", "TAR", "MASS")]
 
 if(length(which(DA87$METAL == "" | is.na(DA87$METAL))) != 0){ #Changed from "."
-  DB87 <- DA87[which(DA87$METAL == "."),]
+  DB87 <- DA87[(DA87$METAL == ""),]
   DB87$COMMENTS <- "Bird was captured with plastic and realeased without metal"
   DB87$YEAR <- "87"
   colnames(DB87)[colnames(DB87) == "BAND87"] <- "BAND"
@@ -1571,7 +1583,7 @@ if(length(which(DA87$METAL == "" | is.na(DA87$METAL))) != 0){ #Changed from "."
 }else{DB87 <- setNames(data.frame(matrix(ncol = 3, nrow = 0)), c("BAND", "COMMENTS", "YEAR"))}
 
 #Create a dataframe with all the observations where metal is not "."
-DC87 <- DA87[which(DA87$METAL != "" & !is.na(DA87$METAL)),] #changed from "."
+DC87 <- DA87[(DA87$METAL != "" & !is.na(DA87$METAL)),] #changed from "."
 
 
 #This is temporary, but may need to do something at the beginning so it's just nice the whole way through.
@@ -1584,19 +1596,20 @@ DC87$Nt87 <- as.integer(DC87$Nt87)
 #it happened more than once with count.
 DD87 <- group_by(DC87, METAL) %>% summarise(meanNc87 = mean_(DC87, Nc87), meanNt87 = mean_(DC87,Nt87), 
                                             DATE = min(DATE), COUNTsum = sum(COUNT))
+#Again I think summarise is fine since it originally is from an rbind from two different file types? Recap 
+#  and bsc? 
 
 DE87 <- merge(DA87, DD87, by = c("METAL", "DATE"))
-DE87 <- DE87[which(!is.na(DE87$COUNTsum)), !names(DE87) %in% c("Nc87", "Nt87")]
+DE87 <- DE87[(!is.na(DE87$COUNTsum)), !names(DE87) %in% c("Nc87", "Nt87")]
 
 #DF87 <- group_by(DE87, METAL) %>% slice(sum(COUNT))
-DF87 <- DE87 %>% group_by(METAL) %>%
-  mutate(COUNT = sum(COUNT)) %>%
-  summarise_all(~last(.[which(!is.na(.) & (. != ""))]))
-DF87 <- DF87[,!names(DE87) %in% c("n87", "COUNTsum")]
+DF87 <- DE87 %>% group_by(METAL) %>% mutate(COUNT = sum(COUNT)) #%>% summarise_all(~last(.[which(!is.na(.) & (. != ""))]))
+CheckReplicates <- Mistakes(x = DF87, groupby = "METAL", yeardf = BA87, CheckReplicates)
+DF87 <- DF87[!(DF87$COUNTsum > 1),!names(DE87) %in% c("n87", "COUNTsum")]
 
 DG87 <- DF87 %>% rename(NC87 = meanNc87, NT87 = meanNt87)
 
-DH87 <- DG87[which(!is.na(DG87$NEWMETAL)),] #Changed from "."
+DH87 <- DG87[(!is.na(DG87$NEWMETAL)),] #Changed from "."
 if(nrow(DH87) == 0){DH87 <- DH87 %>% rename(DEL = METAL); DH87 <- DH87 %>% select(-DEL,DEL)}else{
   DH87$DEL <- "Y"
   DH87 <- DH87[,!names(DH87) %in% "METAL"]
@@ -1766,7 +1779,7 @@ DV87 <- DS87[which(!is.na(DT87$COMMENTS)), c("COMMENTS", "METAL")]
 ############################################################################
 NEST87 <- NEST87 %>% mutate_all(as.character)
 
-FA87 <- NEST87[which(!is.na(NEST87$BAND)),]
+FA87 <- NEST87[(!is.na(NEST87$BAND)),]
 if(nrow(FA87) != 0){
   FA87 <- FA87[FA87$BAND != "UM",]
   FA87$feband <- NA
@@ -1787,7 +1800,7 @@ if(nrow(FA87) != 0){
   FA87 <- FA87 %>% mutate_all(as.character)
 }
 
-FB87 <- NEST87[which(!is.na(NEST87$MATE)),]
+FB87 <- NEST87[(!is.na(NEST87$MATE)),]
 if(nrow(FB87) != 0){
   FB87 <- FB87[FB87$MATE != "UM",]
   FB87$mateband87 <- NA
@@ -1813,12 +1826,14 @@ for(i in 1:nrow(FC87)){
 FC87 <- FC87[, !names(FC87) %in% c("feband", "maband")]
 FD87 <- FC87
 FD87$COUNT <- 1
-FE87 <- group_by(FD87, BAND, .drop = FALSE) %>% summarise(COUNT = sum(COUNT))
+FE87 <- group_by(FD87, BAND, .drop = FALSE) %>% mutate(COUNT = sum(COUNT))
+CheckReplicates <- Mistakes(x = FE87, groupby = "BAND", yeardf = BA87, CheckReplicates)
 
-FF87 <- FE87[which(FE87$COUNT == 1),]
+
+FF87 <- FE87[(FE87$COUNT == 1),]
 FF87$DEL <- "N"
 
-FG87 <- FE87[which(FE87$COUNT > 1),]
+FG87 <- FE87[(FE87$COUNT > 1),]
 if(nrow(FG87) != 0){FG87$DEL <- "Y"}else{
   FG87 <- setNames(data.frame(matrix(ncol = (length(colnames(FG87)) + 1), nrow = 0)), c(colnames(FG87), "DEL"))
   FG87 <- FG87 %>% mutate_all(as.character)
@@ -1829,7 +1844,7 @@ FI87 <- FI87[which(FI87$DEL == "Y"),]
 if(nrow(FI87) != 0){
     FI87$dud <- 1
 }else{
-  FI87 <- setNames(data.frame(matrix(ncol = 2, nrow = 0)), c("BAND", "dud"))
+  FI87 <- setNames(data.frame(matrix(ncol = 2, nrow = 0)), c("BAND", "COUNT"))
 }
 
 FJ87 <- group_by(FI87, BAND) %>% summarise(dud = sum(COUNT))
@@ -1844,7 +1859,7 @@ if(nrow(FK87) != 0){
 }
 
 FL87 <- full_join(FC87, FK87)
-FL87 <- FL87[which(FL87$DEL != "Y" | is.na(FL87$DEL)),] #Deletes columns with a Y in $DEL
+FL87 <- FL87[(FL87$DEL != "Y" | is.na(FL87$DEL)),] #Deletes columns with a Y in $DEL
 
 FM87 <- full_join(FL87, FK87)
 FM87$CS87 <- FM87$CS; FM87$CSC87 <- FM87$CSC; FM87$E87 <- FM87$E; FM87$F87 <- FM87$F; FM87$LO87 <- FM87$LO
@@ -1892,11 +1907,11 @@ FR87$MATEP87[which(FR87$mateband87 == "UM")] <- FR87$mateband87[which(FR87$mateb
 FR87 <- FR87[, !names(FR87) %in% "mateband87"]
 
 FS87 <- full_join(DU87, FR87)
-FS87 <- FS87[which(!is.na(FS87$METAL)),]
+FS87 <- FS87[(!is.na(FS87$METAL)),]
 FS87 <- FS87[, !names(FS87) %in% "NEST"]
 
 FT87 <- full_join(DU87, FR87)
-FT87 <- FT87[which(is.na(FT87$METAL)), "BAND"] #******* I'm not sure if I should use NA here instead of "." but I'm going to until that proves dumb
+FT87 <- FT87[(is.na(FT87$METAL)), "BAND"] #******* I'm not sure if I should use NA here instead of "." but I'm going to until that proves dumb
 if(nrow(FT87) != 0){
   FT87$YEAR <- "87"
   FT87$COMMENTS <- "Bird seen at nest, no banding record"
@@ -1908,7 +1923,7 @@ if(nrow(FT87) != 0){
 #It's H time!!!
 ###
 
-HA87 <- BS87[which(BS87$DRIVE != "NEST" | is.na(BS87$DRIVE)),]
+HA87 <- BS87[(BS87$DRIVE != "NEST" | is.na(BS87$DRIVE)),]
 HA87$AGEB <- NA; HA87$SEXB <- NA; HA87$DATEB <- NA; HA87$YEARB <- NA
 for(i in 1:nrow(HA87)){
   if(HA87$FILE[i] == "BS"){
@@ -1933,33 +1948,24 @@ if(nrow(HB87) != 0){
   HB87 <- HB87 %>% mutate_all(as.character())
 }
 
-HC87 <- HA87[which(HA87$METAL != "" & !is.na(HA87$METAL)),] #Changed from "."
+HC87 <- HA87[(HA87$METAL != "" & !is.na(HA87$METAL)),] #Changed from "."
 HC87$Bc87 <- as.numeric(HC87$Bc87)
 HC87$Bt87 <- as.numeric(HC87$Bt87)
 HD87 <- group_by(HC87, METAL) %>% summarise(meanbc87 = mean_(HC87, Bc87), meanbt87 = mean_(HC87,Bt87),
                                             DATE = min(DATE, na.rm = T), COUNTsum = sum(COUNT, na.rm = T))
-
-###########
-#START HERE WEDS: For double metal 99702847 we have the same band, but in SAS they
-#have two different bands for HE
-############
-
+#Again originally from BS which is rbinded of bsc and nest files so I think it's ok to summarise here
 
 HE87 <- full_join(HA87, HD87)
-HE87 <- HE87[which(!is.na(HE87$COUNTsum)), !names(HE87) %in% c("Bc87", "Bt87")]
+HE87 <- HE87[(!is.na(HE87$COUNTsum)), !names(HE87) %in% c("Bc87", "Bt87")]
 
 
 HF87 <- HE87[,!names(HE87) %in% "COUNTsum"]
-#*** SO in order to summarise and keep all the columns I have to do it this way, I use last which will cause 
-#    issues if there are any cases where two rows have discrepencies (like if the webtags are different for
-#    the same metal), but when I tested it in SAS that's what it does. So this might be a good place to add 
-#    a check and decide what to do? Idk but it works so I'm keeping it for now lol
-HF87 <- HF87 %>% group_by(METAL) %>%
-          mutate(COUNT = sum(COUNT)) %>%
-          summarise_all(~last(.[which(!is.na(.) & (. != ""))]))
+HF87 <- HF87 %>% group_by(METAL) %>% mutate(COUNT = sum(COUNT)) #%>% summarise_all(~last(.[which(!is.na(.) & (. != ""))]))
+CheckReplicates <- Mistakes(x = HF87, groupby = "METAL", yeardf = BA87, CheckReplicates)
+HF87 <- HF87[!(HF87$COUNT > 1),]
 
 HG87 <- HF87 %>% rename(BC87 = meanbc87, BT87 = meanbt87)
-HH87 <- HG87[which(!is.na(HG87$NEWMETAL)), !names(HG87) %in% "METAL"] #changed from "."
+HH87 <- HG87[(!is.na(HG87$NEWMETAL)), !names(HG87) %in% "METAL"] #changed from "."
 HH87$DEL <- "Y"
 
 
@@ -1986,10 +1992,22 @@ HN87 <- full_join(HL87, HM87, by = "METAL") %>% #was left join
   ) %>%
   select(-mr87.x, -mr87.y, -dbd87.x, -dbd87.y, -DEL.x, -DEL.y)
 
-HO87 <- HN87[which(is.na(HN87$duma) & HN87$dumb == "1"),]
+HO87 <- HN87[(is.na(HN87$duma) & HN87$dumb == "1"),]
 HP87 <- HH87
 HP87$METAL <- HP87$mr87
-HQ87 <- full_join(FS87, HP87)
+HQ87 <- full_join(FS87, HP87, by = "METAL") %>% #***I think a right join here would be quicker to get the same outcome, but idk if that could cause issues later??
+  mutate(mr87 = coalesce(mr87.x, mr87.y),
+         WEBTAG = coalesce(WEBTAG.x, WEBTAG.y),
+         #BAND87 = coalesce(BAND87.x, BAND87.y),
+         PR87 = coalesce(PR87.x, PR87.y),
+         AGEB = coalesce(AGEB.x, AGEB.y),
+         SEXB = coalesce(SEXB.x, SEXB.y),
+         DATEB = coalesce(DATEB.x, DATEB.y),
+         YEARB = coalesce(YEARB.x, YEARB.y)
+  ) %>%
+  select(-mr87.x, -mr87.y, -WEBTAG.x, -WEBTAG.y, -PR87.x, -PR87.y, -AGEB.x, -AGEB.y,
+         -SEXB.x, -SEXB.y, -DATEB.x, -DATEB.y, -YEARB.x, -YEARB.y)
+
 HQ87 <- HQ87[which(HQ87$DEL == "Y"), !names(HQ87) %in% "METAL"]
 HR87 <- HQ87 %>% rename(dumpr87 = PR87, yearb87 = YEARB, dateb87 = DATEB,
                         ageb87 = AGEB, sexb87 = SEXB)
@@ -2008,6 +2026,12 @@ HS87$BANDB <- NA
 HS87$WEBTAGB <- NA
 HS87$COMMENTS <- NA
 #Takes a Hot Second: Do something different?
+
+#***There's literally one instance for this with metal 105700584
+#So maybe there's a place where it's assigned but I don't think so? So not sure if there's a better fix than
+#just doing this which is a tad silly but better for other years later in case this happens
+HS87$BAND[which(HS87$BAND == "")] <- NA
+
 for(i in 1:nrow(HS87)){
   #RP
   if((!is.na(HS87$dumpr87[i]) & HS87$dumpr87[i] != "") & !is.na(HS87$PR87[i])){HS87$RP87[i] <- HS87$PR87[i]}else{
@@ -2030,7 +2054,7 @@ for(i in 1:nrow(HS87)){
     HS87$COMMENTS[i] <- "Sex at banding does not agree with BBL and BSC"
   }
   if(!is.na(HS87$sexb87[i]) & is.na(HS87$SEXB[i]) ){HS87$SEX[i] <- HS87$sexb87[i]}
-  if(is.na(HS87$ageb87[i]) & !is.na(HS87$AGEB[i]) ){HS87$SEX[i] <- HS87$SEXB[i]}
+  if(is.na(HS87$sexb87[i]) & !is.na(HS87$SEXB[i]) ){HS87$SEX[i] <- HS87$SEXB[i]}
 
   #DATE
   if(!is.na(HS87$dateb87[i]) & !is.na(HS87$DATEB[i]) & HS87$dateb87[i] == HS87$DATEB[i]){HS87$DATE[i] <- HS87$DATEB[i]}
@@ -2087,7 +2111,7 @@ HV87 <- HT87[which(!is.na(HT87$COMMENTS)), c('COMMENTS', "METAL", 'BAND', 'WEBTA
 #The J's!!!! Egg Data!!!
 ###
 
-JA87 <- EGG87[which(EGG87$TAG != ""),] #This may need to be NA not "", check a different year
+JA87 <- EGG87[(EGG87$TAG != ""),] #This may need to be NA not "", check a different year
 keep <- c("COUNT", "NEST", "EGG", 'TAGD', "STATE", "DATE", "TAG")
 if(nrow(JA87) != 0){
   JA87$EGG <- JA87$EGGB
@@ -2099,7 +2123,7 @@ if(nrow(JA87) != 0){
   JA87 <- JA87 %>% mutate_all(as.character)
 }
 
-JB87 <- EGG87[which(EGG87$LENGTH != "" | EGG87$WIDTH != ""),]
+JB87 <- EGG87[(EGG87$LENGTH != "" | EGG87$WIDTH != ""),]
 keep <- c("NEST", "EGG", "LENGTH", "WIDTH")
 if(nrow(JA87) != 0){
   JB87$EGG <- JB87$EGGA
@@ -2117,8 +2141,11 @@ JC87$L <- JC87$LENGTH
 JC87$W <- JC87$WIDTH
 JC87 <- JC87[,!names(JC87) %in% c("TAGD", "LENGTH", "WIDTH", "TAG")]
 
-JC87$COUNT <- as.numeric(JC87$COUNT)
-JD87 <- JC87 %>% group_by(WEBTAG, NEST, EGG) %>% summarise(MD = mean(D), ML = mean(L), MW = mean(W), C = sum(COUNT))
+JC87 <- JC87 %>% mutate_at(vars(D, L, W, COUNT), as.numeric)
+
+JD87 <- JC87 %>% group_by(WEBTAG, NEST, EGG) %>% summarise(MD = mean_(JC87, D), ML = mean_(JC87, L), 
+                                                MW = mean_(JC87, W), C = sum(COUNT))
+#***ughh not sure if I should include Mistakes() here, I don't think I will for now
 
 JE87 <- JD87
 JE87 <- JE87 %>% rename(WTD = MD, EGG1 = ML, EGGW = MW)
@@ -2126,14 +2153,15 @@ if(nrow(JE87) != 0){
   JE87$COUNT <- 1
 }else{
   JE87 <- setNames(data.frame(matrix(ncol = 8, nrow = 0)), c(colnames(JE87), "COUNT"))
-  JE87 <- JE87 %>% mutate_all(as.character)
+  JE87 <- JE87 %>% mutate_if(is.logical, as.character)
+  JE87$COUNT <- as.numeric(JE87$COUNT)
 }
 JE87 <- JE87[, !names(JE87) %in% "C"]
 
-JE87$COUNT <- as.numeric(JE87$COUNT)
-JF87 <- group_by(JE87, WEBTAG) %>% summarise(COUNT = sum(COUNT))
+JF87 <- JE87 %>% group_by(WEBTAG) %>% mutate(COUNT = sum(COUNT))
+CheckReplicates <- Mistakes(x = JF87, groupby = "WEBTAG", yeardf = BA87, CheckReplicates)
 
-JG87 <- JF87[which(JF87$COUNT > 1), "WEBTAG"]
+JG87 <- JF87[(JF87$COUNT > 1), "WEBTAG"]
 if(nrow(JG87) != 0){
   JG87$DEL <- "Y"
 }else{
@@ -2143,20 +2171,19 @@ if(nrow(JG87) != 0){
 
 JH87 <- JA87 %>% rename(WEBTAG = TAG)
 JI87 <- full_join(JG87, JH87)
-JI87 <- JI87[-which(JI87$DEL == "Y"), !names(JI87) %in% "DEL"] #Not sure if this will work but I've decided it does lol
+JI87 <- JI87[-which(JI87$DEL == "Y"), !names(JI87) %in% "DEL"] 
 
-JJ87 <- full_join(JH87, JG87)
-JJ87 <- JJ87[which(JJ87$DEL == "Y"),]
-keep <- c("WEBTAG", "NEST", "YEAR", "COMMENTS")
+JJ87 <- full_join(JG87, JH87)
+JJ87 <- JJ87[which(JJ87$DEL == "Y"),c("WEBTAG", "NEST")]
 if(nrow(JJ87) != 0){
   JJ87$YEAR <- "87"
-  JJ87$COMMENTS <- "This webtag put on 2 different eggs"
+  JJ87$COMMENTS <- "This webtag was put on 2 different eggs"
 }else{
   JJ87 <- setNames(data.frame(matrix(ncol = 4, nrow = 0)), keep)
   JJ87 <- JJ87 %>% mutate_all(as.character)
 }
 
-JK87 <- JI87
+JK87 <- JI87 #This is all the remaining webtags without the duplicates
 if(nrow(JK87) != 0){
   JK87$DUMA <- "Y"
 }else{
@@ -2165,8 +2192,9 @@ if(nrow(JK87) != 0){
 }
 
 JK87$COUNT <- as.numeric(JK87$COUNT)
+
 JL87 <- full_join(JK87, JE87)
-JL87 <- JL87[which(JL87$DUMA == "Y"), !names(JL87) %in% c("DUMA", "COUNT", "WTD")] #Again assuming I can do this
+JL87 <- JL87[which(JL87$DUMA == "Y"), !names(JL87) %in% c("DUMA", "COUNT", "WTD")] 
 
 ###
 #SAS COMMENTS: Starts dealing with parent info for this years webtags;
@@ -2176,40 +2204,54 @@ JL87 <- JL87[which(JL87$DUMA == "Y"), !names(JL87) %in% c("DUMA", "COUNT", "WTD"
 LA87 <- FM87
 LA87$dum <- 1
 
-LB87 <- group_by(LA87, NEST) %>% summarise(dum = sum(dum))
+LB87 <- LA87 %>% group_by(NEST) %>% summarise(dum = sum(dum))
+
 LC87 <- NEST87
+
 LD87 <- full_join(LC87, LB87)
 LD87 <- LD87[which(LD87$dum > 0 & LD87$NEST != ""),]
+LD87$PARENT1P <- NA
+LD87$PARENT2P <- NA
 for(i in 1:nrow(LD87)){
-  band <- str_pad(LD87$BAND[i], 3, side = "right") #Makes sure the bands are three spaces
-  color <- str_replace_na(LD87$C1[i], " ")
-  LD87$PARENT1P[i] <- paste0(band, color)
-
-  band2 <- str_pad((str_replace_na(LD87$MATE[i], " ")), 3, side = 'right')
-  color2 <- str_replace_na(LD87$C2[i], " ")
-  LD87$PARENT2P[i] <- paste0(band2, color2)
+  #Some cleaning up could happen here: what happens if there's a band but no color, should it be AO2_ or just AO2?
+  # band <- str_pad(LD87$BAND[i], 3, side = "right") 
+  # color <- str_replace_na(LD87$C1[i], "")
+  
+  if(!is.na(LD87$BAND[i])){
+    color <- str_replace_na(LD87$C1[i], "")
+    LD87$PARENT1P[i] <- paste0(LD87$BAND[i], color)
+  }
+  
+  if(!is.na(LD87$MATE[i])){
+    color2 <- str_replace_na(LD87$C2[i], "")
+    LD87$PARENT2P[i] <- paste0(LD87$MATE[i], color2)
+  }
+  
+  # band2 <- str_pad((str_replace_na(LD87$MATE[i], " ")), 3, side = 'right')
+  # color2 <- str_replace_na(LD87$C2[i], "")
 }
 LD87 <- LD87[,c("NEST", "PARENT1P", "PARENT2P")]
 
-LE87 <- LD87[which(LD87$PARENT1P != "    "),]
+LE87 <- LD87[which(!is.na(LD87$PARENT1P)),] 
 LE87$BAND <- LE87$PARENT1P
 LE87 <- LE87[,c("NEST", "BAND")]
 
-LF87 <- LD87[which(LD87$PARENT2P != "    "),]
+LF87 <- LD87[which(!is.na(LD87$PARENT2P)),]
 LF87$BAND <- LF87$PARENT2P
 LF87 <- LF87[,c("NEST", "BAND")]
-LG87 <- DU87[which(!is.na(DU87$BAND) | DU87$BAND != ""), c("BAND", "METAL")] %>% rename(PARENTM = METAL)
+
+LG87 <- DU87[which(!is.na(DU87$BAND) & DU87$BAND != ""), c("BAND", "METAL")] %>% rename(PARENTM = METAL)
 
 LH87 <- full_join(LG87, LE87)
-LH87 <- LH87[which(!is.na(LH87$NEST)),]
+LH87 <- LH87[(!is.na(LH87$NEST)),]
 LH87$PARENTM[which(LH87$BAND == "UM")] <- "UM"
-LH87$PARENTM[which(LH87$PARENTM == "    ")] <- "banded"
+LH87$PARENTM[which(LH87$PARENTM == "")] <- "banded"
 LH87 <- LH87 %>% rename(PARENT1M = PARENTM, PARENT1P = BAND)
 
 LI87 <- full_join(LG87, LF87)
-LI87 <- LI87[which(!is.na(LI87$NEST)),]
+LI87 <- LI87[(!is.na(LI87$NEST)),]
 LI87$PARENTM[which(LI87$BAND == "UM")] <- "UM"
-LI87$PARENTM[which(LI87$PARENTM == "    ")] <- "banded"
+LI87$PARENTM[which(LI87$PARENTM == "")] <- "banded"
 LI87 <- LI87 %>% rename(PARENT2M = PARENTM, PARENT2P = BAND)
 
 LJ87 <- full_join(LH87, LI87)
@@ -2219,7 +2261,7 @@ if(nrow(LK87) !=0){LK87$KEEP <- "Y"}else{
   LK87 <- setNames(data.frame(matrix(ncol = (length(colnames(LK87)) +1), nrow = 0)), c(colnames(LK87), "KEEP"))
   LK87 <- LK87 %>% mutate_all(as.character)
 }
-keep <- c("EGG1", "EGGW", "WEBTAG", "NEST", "STATE", "EGG", "TAGD", "PARENT1M", "PARENT1P", 'PARENT2M', 'PARENT2P', 'KEEP')
+keep <- c("WEBTAG", "NEST", "STATE", "EGG", "TAGD", "EGG1", "EGGW","PARENT1M", "PARENT1P", 'PARENT2M', 'PARENT2P', 'KEEP')
 LK87 <- LK87[,keep]
 
 LL87 <- LK87
@@ -2228,14 +2270,14 @@ if(nrow(LL87) !=0){LL87$YEAR <- "87"}else{
   LL87 <- LL87 %>% mutate_all(as.character)
 }
 
-LM87 <- LL87
+LM87 <- bind_rows(LL87, AC87)
 
 NA87 <- HG87[,c("METAL", "WEBTAG", "AGEB", "YEARB")]
 
 NB87 <- full_join(NA87, LK87)
-NB87 <- NB87[which(NB87$WEBTAG != "" & NB87$METAL != ""),]
+NB87 <- NB87[(!is.na(NB87$WEBTAG) & !is.na(NB87$METAL)),] #!is.na here?
 if(nrow(NB87) != 0){
-  NB87$YEAR <- (NB87$YEARB - 1900)
+  NB87$YEAR <- (as.numeric(NB87$YEARB) - 1900)
   NB87 <- NB87[which(NB87$YEAR == "87"), !names(NB87) %in% "YEAR"]
 }else{
   NB87 <- setNames(data.frame(matrix(nrow = 0, ncol = length(colnames(NB87)) )), colnames(NB87))
@@ -2243,7 +2285,7 @@ if(nrow(NB87) != 0){
 }
 
 NC87 <- NB87[which(NB87$KEEP == "Y"),]
-ND87 <- NB87[which(NB87$AGEB == "L" & NB87$KEEP == "Y"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
+ND87 <- NB87[which(NB87$AGEB == "L" & is.na(NB87$KEEP)), c("METAL", "WEBTAG", "AGEB", "YEARB")]
 
 NE87 <- NB87[which(NB87$AGEB == "SY"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
 if(nrow(NE87) != 0){
@@ -2261,33 +2303,47 @@ if(nrow(NF87) != 0){
   NF87 <- NF87 %>% mutate_all(as.character)
 }
 
+NG87 <- full_join(NE87, AB87) #Different from 86
+NG87 <- NG87[which(NG87$DUMA == "Y"), !names(NG87) %in% "DUMA"]
+
+NH87 <- full_join(NF87, AC87)#Diff from 86
+NH87 <- NH87[which(NH87$DUMB == "Y"), !names(NH87) %in% "DUMB"]
+
 ###
 #Sas COMMENTS: each row must have the NH column filled in
 ###
 
-NI87 <- bind_rows(NC87, ND87)
+NI87 <- bind_rows(NC87, ND87, NG87, NH87) #Diff from 86
 if(nrow(NI87) != 0){
-  NI87$NEST[which(NI87$NEST == "")] <- "noinfo"
+  NI87$NEST[which(is.na(NI87$NEST))] <- "noinfo"
 }
 NI87 <- NI87 %>% rename(NHID87 = NEST, EGGL87 = EGG1, EGGW87 = EGGW, STATE87 = STATE, PILS87 = EGG, TAGD87 = TAGD,
                         PARENT1M87 = PARENT1M, PARENT1P87 = PARENT1P, PARENT2M87 = PARENT2M, PARENT2P87 = PARENT2P)
 NI87 <- NI87[,!names(NI87) %in% c("AGEB", "YEARB", "KEEP", "YEAR")]
 
+###
+#After lunch start here b/c NJ is just wrong lol
+###
+
 NJ87 <- full_join(HU87, NI87)
 NJ87$COMMENTS <- NA
 #See COMMENTS # 8 where does NHID come from why I'm gonna ignore it
+NJ87$NHID <- NA
+NJ87[c("EGGL", "EGGW", "STATE", "PILS", "TAGD", "PARENT1M", "PARENT2M")] <- NA
 for(i in 1:nrow(NJ87)){
-  if(!is.na(NJ87$NHID87[i])){NJ87$COMMENTS <- "Double use of applied webtag"}
+  if(!is.na(NJ87$NHID[i]) & !is.na(NJ87$NHID87[i])){NJ87$COMMENTS[i] <- "Double use of applied webtag"}
+  if(is.na(NJ87$NHID[i]) & !is.na(NJ87$NHID87[i])){
+    NJ87$EGGL[i] <- NJ87$EGGL87[i]
+    NJ87$EGGW[i] <- NJ87$EGGW87[i]
+    NJ87$NHID[i] <- NJ87$NHID87[i]
+    NJ87$STATE[i] <- NJ87$STATE87[i]
+    NJ87$PILS[i] <- NJ87$PILS87[i]
+    NJ87$TAGD[i] <- NJ87$TAGD87[i]
+    NJ87$PARENT1M[i] <- NJ87$PARENT1M87[i]
+    NJ87$PARENT2M[i] <- NJ87$PARENT2M87[i]
+  }
 }
-NJ87$EGGL <- NJ87$EGGL87
-NJ87$EGGW <- NJ87$EGGW87
-NJ87$NHID <- NJ87$NHID87
-NJ87$STATE <- NJ87$STATE87
-NJ87$PILS <- NJ87$PILS87
-NJ87$TAGD <- NJ87$TAGD87
-NJ87$PARENT1M <- NJ87$PARENT1M87
-NJ87$PARENT2M <- NJ87$PARENT2M87
-NJ87$TAGD <- "   "
+# NJ87$TAGD <- "   " #Different from 
 
 NK87 <- NJ87[which(!is.na(NJ87$COMMENTS)),]
 if(nrow(NK87) != 0){
@@ -2298,8 +2354,140 @@ if(nrow(NK87) != 0){
   NK87 <- NK87 %>% mutate_all(as.character)
 }
 
-NL87 <- NJ87[,!names(NJ87) %in% c("COMMENTS", "eggl87", "eggw87", "NHID87", "STATE87", "PILS87", "TAGD87",
+NL87 <- NJ87[,!names(NJ87) %in% c("COMMENTS", "EGGL87", "EGGW87", "NHID87", "STATE87", "PILS87", "TAGD87",
                                   "PARENT1M87", "PARENT2M87", "PARENT1P87", "PARENT2P87")]
-NL87 <- NL87[-which(!is.na(NL87$BBLYEAR) & NL87$BBLYEAR < 1967),]
+#NL87 <- NL87[-which(!is.na(NL87$BBLYEAR) & NL87$BBLYEAR < 1967),] Diff from 86
 
-ERRORS87 <- bind_rows(BW87, BX87, DB87, DV87, FT87, HB87, HV87, JJ87, NK87)
+#ERRORS87 <- bind_rows(BW87, BX87, DB87, DV87, FT87, HB87, HV87, JJ87, NK87) Diff from 86
+
+#Diff from 86
+TOW87A <- TOWER[(TOWER$YEAR == "1987"),] %>% rename(REALBAND = BAND)
+
+TOW87B <- TOW87A %>% rename(BAND = MATE)
+TOW87B <- TOW87B[-which(is.na(TOW87B$BAND) | TOW87B$BAND == "UM" | TOW87B$BAND == "NO"),]
+
+TOW87C <- full_join(TOW87B, NL87)
+TOW87C <- TOW87C[-which(is.na(TOW87C$BRSIZE)),]
+TOW87C <- TOW87C %>% rename(DTO87 = DATE, TMATEM87 = METAL, TMATEP87 = BAND, 
+                                                          TMSEX87 = SEXB, TBS87 = BRSIZE)
+TOW87C <- TOW87C[,c("REALBAND", "DTO87", "TMATEM87", "TMATEP87", "TMSEX87", "TBS87")]
+
+TOW87D <- TOW87C[(is.na(TOW87C$TMATEM87)), !names(TOW87C) %in% c('TMATEM87', 'TMSEX87')] %>% 
+              rename(PR87 = TMATEP87)
+
+TOW87E <- NL87[(!is.na(NL87$PR87)),]
+
+TOW87F <- full_join(TOW87E, TOW87D)
+TOW87F <- TOW87F %>% rename(TMATEM87 = METAL, TMATEP87 = BAND, TMSEX87 = SEXB)
+TOW87F <- TOW87F[-which(is.na(TOW87F$REALBAND) | is.na(TOW87F$TMATEM87)), c('REALBAND', 'DTO87', 'TBS87', 'TMATEM87', 'TMATEP87', 'TMSEX87')]
+
+TOW87G <- bind_rows(TOW87C, TOW87F) 
+TOW87G <- TOW87G %>% rename(BAND = REALBAND)
+
+TOW87H <- TOWER[which(TOWER$YEAR == "1987" & (is.na(TOWER$MATE) | TOWER$MATE == "UM" | TOWER$MATE == "NO")), !names(TOWER) %in% "YEAR"]
+TOW87H <- TOW87H %>% rename(DTO87 = DATE, TMATEP87 = MATE, TBS87 = BRSIZE)
+TOW87H$TMATEM87 <- as.character(NA)
+
+
+TOW87I <- full_join(TOW87H, TOW87G) %>% full_join(.,NL87)
+TOW87I <- TOW87I[-which(!is.na(TOW87I$METAL)), c("BAND","DTO87", "TMATEM87", "TMATEP87", "TBS87")] %>% rename(PR87 = BAND)
+
+TOW87J <- NL87[(!is.na(NL87$PR87)),] #same as tow87e?
+
+TOW87K <- full_join(TOW87J, TOW87I)
+#***Double check below when there's a year that fits it b/c I'm not sure the which statement is correct.
+TOW87K <- TOW87K[-which(is.na(TOW87K$METAL) & (is.na(TOW87K$DTO87) & is.na(TOW87K$TMATEP87))), c("BAND", "DTO87", "TMATEM87", "TMATEP87", "TBS87")]
+
+TOW87L <- bind_rows(TOW87G, TOW87H, TOW87K)
+TOW87L$COUNT <- 1
+
+#find duplicate bands from tow87L
+TOW87M <- TOW87L %>% group_by(BAND) %>% mutate(COUNT = sum(COUNT))
+CheckReplicates <- Mistakes(x = TOW87M, groupby = "BAND", yeardf = BA87, CheckReplicates)
+TOW87M <- TOW87M[!(TOW87M$COUNT > 1), !names(TOW87M) %in% "COUNT"]
+
+NBR87A <- NBBAND[(NBBAND$YEAR == "1987"),] %>% rename(REALBAND = BAND, NBC87 = NBCOL)
+
+NBR87B <- NBR87A %>% rename(BAND = MATE)
+NBR87B <- NBR87B[-which(is.na(NBR87B$BAND) | NBR87B$BAND == "UM" | NBR87B$BAND == "NO"),]
+
+NBR87C <- full_join(NBR87B, NL87) 
+NBR87C <- NBR87C[-which(is.na(NBR87C$REALBAND)), c("REALBAND", "DATE", "METAL", "BAND", "SEXB", "NBC87")] %>% 
+              rename(NBD87 = DATE, NBMATEM87 = METAL, NBMATEP87 = BAND, NBMSEX87 = SEXB)
+NBR87D <- NBR87C[which(is.na(NBR87C$NBMATEM87)), !names(NBR87C) %in% c("NBMATEM87", "NBMSEX87")] %>% rename(PR87 = NBMATEP87)
+
+NBR87E <- NL87[(!is.na(NL87$PR87)),]
+
+NBR87F <- full_join(NBR87E, NBR87D)
+NBR87F <- NBR87F[-which(is.na(NBR87F$REALBAND) | is.na(NBR87F$METAL)), 
+                 c("REALBAND", "METAL", "NBD87", "BAND", "SEXB", "NBC87")] %>% rename(NBMATEM87 = METAL, 
+                                                                             NBMATEP87 = BAND, NBMSEX87 = SEXB)
+NBR87G <- bind_rows(NBR87C, NBR87F) %>% rename(BAND = REALBAND)
+
+NBR87H <- NBBAND[which(NBBAND$YEAR == "1987" & (is.na(NBBAND$MATE) | NBBAND$MATE == "UM" | 
+                                                 NBBAND$MATE == "NO")), !names(NBBAND) %in% "YEAR"]
+NBR87H <- NBR87H %>% rename(NBD87 = DATE, NBMATEP87 = MATE, NBC87 = NBCOL)
+NBR87H$NBMATEM87 <- as.character(NA)
+
+NBR87I <- full_join(NBR87G, NBR87H) %>% full_join(., NL87)
+NBR87I <- NBR87I[-which(!is.na(NBR87I$METAL)),c("BAND", "NBC87","NBD87", "NBMATEM87", "NBMATEP87")] %>% 
+              rename(PR87 = BAND)
+NBR87J <- NL87[(!is.na(NL87$PR87)),] #same as something we did above in like tower or something 
+
+NBR87K <- full_join(NBR87J, NBR87I) 
+NBR87K <- NBR87K[!(is.na(NBR87K$METAL) | (is.na(NBR87K$NBD87) & is.na(NBR87K$NBMATEP87)) ), 
+                 c("BAND", "NBD87", "NBMATEM87", "NBMATEP87", "NBC87")] #*** Check Operators here again they confuse me a lot lol
+NBR87L <- bind_rows(NBR87G, NBR87H, NBR87K)
+NBR87L$COUNT <- 1
+
+#find duplicate bands from nbr87L
+NBR87M <- NBR87L %>% group_by(BAND) %>% mutate(COUNT = sum(COUNT))
+CheckReplicates <- Mistakes(x = NBR87M, groupby = "BAND", yeardf = BA87, CheckReplicates)
+NBR87M <- NBR87M[!(NBR87M$COUNT > 1), !names(NBR87M) %in% "COUNT"]
+
+NN87 <- full_join(NL87, TOW87M) %>% full_join(., NBR87M)
+NN87 <- NN87[!(is.na(NN87$METAL)),]
+
+OA87 <- NN87[!(is.na(NN87$MATEM87) & is.na(NN87$NBMATEM87) & is.na(NN87$TMATEM87) & is.na(NN87$MATEP87) &
+                 is.na(NN87$NBMATEP87) & is.na(NN87$TMATEP87)),]
+OA87$COMMENTS <- as.character(NA)
+
+for(i in 1:nrow(OA87)){
+  if( (!is.na(OA87$MATEP87[i]) & !is.na(OA87$TMATEP87[i]) & (OA87$MATEP87[i] != OA87$TMATEP87[i])) |
+      (!is.na(OA87$MATEP87[i]) & !is.na(OA87$NBMATEP87[i]) & (OA87$MATEP87[i] != OA87$NBMATEP87[i])) |
+      (!is.na(OA87$TMATEP87[i]) & !is.na(OA87$NBMATEP87[i]) & (OA87$TMATEP87[i] != OA87$NBMATEP87[i]))
+    ){
+    OA87$COMMENTS[i] <- "Mate changed within year"
+  }
+}
+keep <- c("METAL", "BAND", "MATEM87", "MATEP87", "NBD87", "NBMATEM87", "NBMATEP87", "DTO87", 
+          "TMATEM87", "TMATEP87", "TBS87", "COMMENTS")
+OA87 <- OA87[!(is.na(OA87$COMMENTS)), keep]
+
+OB87 <- NN87[!(is.na(NN87$NMSEX87) & is.na(NN87$TMSEX87) & is.na(NN87$NBMSEX87)),]
+OB87$COMMENTS <- as.character(NA)
+OB87$COMMENTS[(OB87$NMSEX87 == OB87$SEXB) | (OB87$TMSEX87 == OB87$SEXB)| 
+              (OB87$NBMSEX87 == OB87$SEXB)] <- "Same sex pair" #hell yeah gay bird rights
+keep <- c("METAL", "BAND", "SEXB", "MATEM87", "MATEP87", "NBD87", "NBMATEM87", "NBMATEP87", "NBMSEX87", 
+          "DTO87", "TMATEM87", "TMATEP87", "TBS87", "TMSEX87", "COMMENTS")
+OB87 <- OB87[!is.na(OB87$COMMENTS), keep]
+
+OC87 <- NN87
+OC87$COMMENTS <- as.character(NA)
+OC87$COMMENTS[((OC87$BBLAGE == "L" & OC87$BBLYEAR == "1986" & !is.na(OC87$n87))|
+              (OC87$BBLAGE == "L" & OC87$BBLYEAR == "1986" & OC87$TBS87 > 0))] <- "Breeding SY bird"
+OC87 <- OC87[!is.na(OC87$COMMENTS), keep] #Columns saved are the same as keep above so not changing it
+
+OD87 <- full_join(NL87, NBR87M)
+OD87$COMMENTS <- as.character(NA)
+OD87$COMMENTS[is.na(OD87$METAL)] <- "Bird seem NB, no banding record"
+OD87 <- OD87[!is.na(OD87$COMMENTS), c("BAND", "SEXB", "COMMENTS", "NBD87", "NBMATEM87", "NBMATEP87")]
+
+OE87 <- full_join(NL87, TOW87M)
+OE87$COMMENTS <- as.character(NA)
+OE87$COMMENTS[is.na(OE87$METAL)] <- "Bird seen tower, no banding record"
+OE87 <- OE87[!is.na(OE87$COMMENTS),c("BAND", "SEXB", "COMMENTS", "DTO87", "TMATEM87", "TMATEP87", "TBS87")]
+
+ERRORS87 <- bind_rows(BW87, BX87, DV87, FT87, HB87, HB87, JJ87, NK87, OA87, OB87, OC87, OD87, OE87)
+
+
