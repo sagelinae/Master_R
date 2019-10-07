@@ -723,7 +723,7 @@ if(nrow(FB86) != 0){
   FB86 <- FB86 %>% mutate_all(as.character)
 }
 
-FC86 <- full_join(FA86, FB86)
+FC86 <- full_join(FA86, FB86) #***hmm why do I do full join here and not set??
 if(nrow(FC86 != 0)){
   for(i in 1:nrow(FC86)){
     if(!is.na(FC86$feband[i])){FC86$BAND[i] <- FC86$feband[i]}
@@ -1069,7 +1069,7 @@ JE86 <- JE86[, !names(JE86) %in% "C"]
 
 JF86 <- group_by(JE86, WEBTAG) %>% mutate(COUNT = sum(COUNT))
 CheckReplicates <- Mistakes(x = JF86, groupby = "WEBTAG", yeardf = BA86, CheckReplicates)
-JF86 <- JF86[!(JF86$COUNT > 1),]
+JF86 <- JE86 %>% group_by(WEBTAG) %>% summarise(COUNT = sum(COUNT))
 
 JG86 <- JF86[(JF86$COUNT > 1), "WEBTAG"]
 if(nrow(JG86) != 0){
@@ -1286,7 +1286,7 @@ ERRORS86 <- bind_rows(BW86, BX86, DB86, DV86, FT86, HB86, HV86, JJ86, NK86)
 addToEnv(list = lists, regex = "*87")
 
 #different between 86 and rest of years
-AA87 <- NL86
+AA87 <- NL86 #88/89 sets it to NN
 AB87 <- LL86
 AC87 <- LM86
 #######
@@ -1297,6 +1297,7 @@ BA87 <- bsc87
 BA87$FILE <- "BS" #Tells us what file this information came from. 
 #This for loop deletes rows where there is missing information. We have to loop backwards here since if we're looping forward 
 #   while deleting rows our i will become mismatched to what row we are actually on in the dataframe.
+#***I think this can be done in a simpler way using the -which() ect...
 for(i in nrow(BA87):1){
   if( (BA87$METAL[i] == "" | is.na(BA87$METAL[i])) & (BA87$BAND[i] == "" | is.na(BA87$BAND[i]))){
     BA87 <- BA87[-i,]
@@ -2158,8 +2159,9 @@ if(nrow(JE87) != 0){
 }
 JE87 <- JE87[, !names(JE87) %in% "C"]
 
-JF87 <- JE87 %>% group_by(WEBTAG) %>% mutate(COUNT = sum(COUNT))
+JF87 <- JE87 %>% group_by(WEBTAG) %>% mutate(COUNT = sum(COUNT)) 
 CheckReplicates <- Mistakes(x = JF87, groupby = "WEBTAG", yeardf = BA87, CheckReplicates)
+JF87 <- JE87 %>% group_by(WEBTAG) %>% summarise(COUNT = sum(COUNT))
 
 JG87 <- JF87[(JF87$COUNT > 1), "WEBTAG"]
 if(nrow(JG87) != 0){
@@ -2360,6 +2362,9 @@ NL87 <- NJ87[,!names(NJ87) %in% c("COMMENTS", "EGGL87", "EGGW87", "NHID87", "STA
 
 #ERRORS87 <- bind_rows(BW87, BX87, DB87, DV87, FT87, HB87, HV87, JJ87, NK87) Diff from 86
 
+#88 Different it has SPRING data
+#90 Different, it includes winter stuff
+
 #Diff from 86
 TOW87A <- TOWER[(TOWER$YEAR == "1987"),] %>% rename(REALBAND = BAND)
 
@@ -2490,4 +2495,5 @@ OE87 <- OE87[!is.na(OE87$COMMENTS),c("BAND", "SEXB", "COMMENTS", "DTO87", "TMATE
 
 ERRORS87 <- bind_rows(BW87, BX87, DV87, FT87, HB87, HB87, JJ87, NK87, OA87, OB87, OC87, OD87, OE87)
 
+#Starting in 96 there's a P section
 
