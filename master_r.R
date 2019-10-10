@@ -537,16 +537,17 @@ if(nrow(DK86) == 0){DM86 <- DG86; DM86$DEL <- ""}else{
 DM86$dumb <- "1"
 DM86 <- DM86 %>% rename(dumpr86 = PR86, webtag86 = WEBTAG, ntd86 = DATE, ageb86 = AGEB, sexb86 = SEXB, 
                         dateb86 = DATEB, yearb86 = YEARB)
-#Merge our cleaned up dataframes together
 
+#Merge our cleaned up dataframes together
 DN86 <- full_join(DM86, DL86) 
 
 DO86 <- DN86[( is.na(DN86$duma) & DN86$dumb == "1"),] #Changed duma = "" to be is.na, since from my dumb test I think that's what it'd be
 
 DP86 <- DH86 
 DP86$METAL <- DP86$mr86
+
 DQ86 <- full_join(AA86, DP86)
-DQ86 <- DQ86[DQ86$DEL == "Y",!names(DQ86) %in% "METAL"]
+DQ86 <- DQ86[which(DQ86$DEL == "Y"),!names(DQ86) %in% "METAL"]
 
 DR86 <- DQ86 %>% rename(dumpr86 = PR86, dbd86 = DATE, webtag86 = WEBTAG, yearb86 = YEARB, dateb86 = DATEB,
                         ageb86 = AGEB, sexb86 = SEXB)
@@ -562,14 +563,17 @@ DS86$DATEB <- NA
 DS86$WEBTAG <- NA
 
 #New columns we're creating
-DS86$RP86 <- NA #DS86$dumpr86
-DS86$AGE <- NA
-DS86$SEX <- NA
-DS86$DATE <- NA #DS86$dateb86
-DS86$YEAR <- NA
-DS86$COMMENTS <- NA
-DS86$BANDB <- NA
-DS86$WEBTAGB <- NA #DS86$webtag86
+DCols <- c("RP86", "AGE", "SEX", "DATE", "YEAR", "COMMENTS", "BANDB", "WEBTAGB")
+DS86[DCols] <- NA
+
+# DS86$RP86 <- NA #DS86$dumpr86 #I don't remember what these were for but I'm scared to delete them now lol
+# DS86$AGE <- NA
+# DS86$SEX <- NA
+# DS86$DATE <- NA #DS86$dateb86
+# DS86$YEAR <- NA
+# DS86$COMMENTS <- NA
+# DS86$BANDB <- NA
+# DS86$WEBTAGB <- NA #DS86$webtag86
 
 #***Temporary b/c i'm lazy?
 #Could add this in earlier when populating YEARB and yearb86 ?? Initialize it as NA?
@@ -669,7 +673,7 @@ DS86 <- DS86[,!names(DS86) %in% c("NEWMETAL", "duma", "dumb", "DEL", "COUNT", "n
                                   "PR86", "ageb86", "AGEB", "sexb86", "SEXB","dateb86", "DATEB", "yearb86", "YEARB")]
 
 DT86 <- DS86 %>% rename(AGEB = AGE, SEXB = SEX, DATEB= DATE, YEARB = YEAR, PR86 = RP86)
-DT86$BAND <- DT86$BANDB
+DT86$BAND <- DT86$BANDB #I don't know why I didn't include these in the rename?? 
 DT86$WEBTAG <- DT86$WEBTAGB
 DT86 <- DT86[,!names(DT86) %in% c("BANDB", "WEBTAGB")]
 
@@ -711,8 +715,9 @@ if(nrow(FB86) != 0){
   FB86$maband <- NA
   for(i in 1:nrow(FB86)){
     #***I think what this for loop does is create an entry for the mate of the bird as well?? Otherwise I don't know why we do this 
-    FA86$mateband86[i] <- paste0(trimws(str_replace_na(FA86$BAND[i], "")), trimws(str_replace_na(FA86$C1[i], "")))
-    FA86$maband[i] <- paste0(trimws(str_replace_na(FA86$MATE[i], "")), trimws(str_replace_na(FA86$C2[i], "")))
+    #I think I fucked up and did FA when I was suppose to do FB??
+    FB86$mateband86[i] <- paste0(trimws(str_replace_na(FB86$BAND[i], "")), trimws(str_replace_na(FB86$C1[i], "")))
+    FB86$maband[i] <- paste0(trimws(str_replace_na(FB86$MATE[i], "")), trimws(str_replace_na(FB86$C2[i], "")))
     
     if(FB86$LOC[i] %in% LOC & !is.na(FB86$LOC[i])){FB86$n86[i] <- FB86$LOC[i]}else{FB86$n86[i] <- "TUT"}
   }
@@ -730,11 +735,11 @@ if(nrow(FC86 != 0)){
     if(!is.na(FC86$maband[i])){FC86$BAND[i] <- FC86$maband[i]}
   }
 }
-
 FC86 <- FC86[, !names(FC86) %in% c("feband", "maband")]
+
 FD86 <- FC86
 FD86$COUNT <- 1
-FE86 <- group_by(FD86, BAND, .drop = FALSE) %>% summarise(COUNT = sum(COUNT)) #I don't remember why I included .drop = false here lol
+FE86 <- group_by(FD86, BAND, .drop = FALSE) %>% mutate(COUNT = sum(COUNT)) #I don't remember why I included .drop = false here lol
 CheckReplicates <- Mistakes(x = FE86, groupby = "BAND", yeardf = BA86,CheckReplicates)
 
 
@@ -750,7 +755,7 @@ if(nrow(FG86) != 0){FG86$DEL <- "Y"}else{
 FI86 <- full_join(FG86, FC86) #was left
 FI86 <- FI86[which(FI86$DEL == "Y"),]
 if(nrow(FI86) != 0){
-  FI86$dud[i] <- 1
+  FI86$dud <- 1
 }else{
   FI86 <- setNames(data.frame(matrix(ncol = (length(colnames(FI86)) + 1), nrow = 0)), c(colnames(FI86), "dud"))
 }
@@ -780,7 +785,7 @@ FM86 <- FM86[, keep]
 
 FO86 <- FM86 %>% rename(REALBAND = BAND)
 FO86$BAND <- FO86$mateband86
-FO86 <- FO86[!(FO86$BAND == "UM" | FO86$BAND == ""),]
+FO86 <- FO86[-which(FO86$BAND == "UM" | FO86$BAND == ""),]
 if(nrow(FO86) != 0){FO86$DUM <- "Y"}else{
   FO86 <- setNames(data.frame(matrix(ncol = (length(colnames(FO86)) + 1), nrow = 0)), c(colnames(FO86), "DUM"))
   FO86 <- FO86 %>% mutate_all(as.character)
@@ -901,7 +906,6 @@ HN86 <- full_join(HL86, HM86, by = c("METAL")) %>%
 HO86 <- HN86[(is.na(HN86$duma) & HN86$dumb == "1"),]
 HP86 <- HH86 
 HP86$METAL <- HP86$mr86
-
 HP86 <- HP86 %>% mutate_if(is.logical, as.character)
 
 HQ86 <- full_join(FS86, HP86, by = "METAL") %>% #***I think a right join here would be quicker to get the same outcome, but idk if that could cause issues later??
@@ -1114,7 +1118,7 @@ LA86 <- FM86
 LA86$dum <- 1
 
 LB86 <- group_by(LA86, NEST) %>% summarise(dum = sum(dum))
-#This about this one, can't just name it Count, maybe take multiple col names? Another input lmao?
+#***Think about this one, can't just name it Count, maybe take multiple col names? Another input lmao?
 #CheckReplicates <- Mistakes(x = LB86, groupby = "NEST", yeardf = BA86, CheckReplicates)
 LC86 <- NEST86
 
@@ -1538,7 +1542,7 @@ CheckReplicates <- Mistakes(x = BU87, groupby = "METAL", yeardf = BA87, CheckRep
 BV87 <- BT87 %>% group_by(BAND87) %>% mutate(COUNT = sum(COUNT))
 CheckReplicates <- Mistakes(x = BV87, groupby = "BAND87", yeardf = BA87, CheckReplicates)
 
-#Different from 86
+#Different from 86 #idk why I said this now I can't see if there's a difference?? past sage why did you say this what secrets do you hold
 #check if a metal band occurs more than once and create a dataframe to flag it
 if(length(which(BU87$COUNT > 1)) != 0){
   BW87 <-  BU87[(BU87$COUNT > 1),]
@@ -1660,6 +1664,9 @@ DS87 <- bind_rows(DN87, DR87)
 DS87$PR87 <- NA
 
 #New columns we're adding
+DCols <- c("RP87", "AGE", "SEX", "DATE", "YEAR", "COMMENTS", "BANDB", "WEBTAGB")
+DS[DCols] <- NA
+
 DS87$RP87 <- NA #DS87$dumpr87
 DS87$AGE <- NA
 DS87$SEX <- NA
@@ -1768,7 +1775,7 @@ DS87 <- DS87[,!names(DS87) %in% c("NEWMETAL", "duma", "dumb", "DEL", "COUNT", "n
 
 DT87 <- DS87 %>% rename(AGEB = AGE, SEXB = SEX, DATEB= DATE, YEARB = YEAR, WEBTAG = WEBTAGB,
                         PR87 = RP87)
-DT87$BAND <- DT87$BANDB
+DT87$BAND <- DT87$BANDB # i don't know why i decided to include webtag in rename but not in 86 wtf sage
 DT87 <- DT87[,!names(DT87) %in% "BANDB"]
 
 DU87 <- DT87[, !names(DT87) %in% "COMMENTS"]
@@ -1819,7 +1826,7 @@ if(nrow(FB87) != 0){
   FB87 <- FB87 %>% mutate_all(as.character)
 }
 
-FC87 <- full_join(FA87, FB87)
+FC87 <- full_join(FA87, FB87) #Check here again why I use full_join and not set
 for(i in 1:nrow(FC87)){
   if(!is.na(FC87$feband[i])){FC87$BAND[i] <- FC87$feband[i]}
   if(!is.na(FC87$maband[i])){FC87$BAND[i] <- FC87$maband[i]}
@@ -1845,7 +1852,7 @@ FI87 <- FI87[which(FI87$DEL == "Y"),]
 if(nrow(FI87) != 0){
     FI87$dud <- 1
 }else{
-  FI87 <- setNames(data.frame(matrix(ncol = 2, nrow = 0)), c("BAND", "COUNT"))
+  FI87 <- setNames(data.frame(matrix(ncol = (length(colnames(FI87)) + 1), nrow = 0)), c(colnames(FI87), "dud")) 
 }
 
 FJ87 <- group_by(FI87, BAND) %>% summarise(dud = sum(COUNT))
