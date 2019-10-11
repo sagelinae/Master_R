@@ -565,8 +565,6 @@ for(f in 1:length(years)){
   DR$METAL <- DR$NEWMETAL
   DR <- DR[,!names(DR) %in% "DEL"] 
   
-  #***This might be different for different years so look into that
-  #It is :)
   DS <- bind_rows(DN, DR)
   #Old columns that aren't there so I'm adding them I guesss
   DS[[paste0("PR",f)]] <- NA
@@ -682,8 +680,10 @@ for(f in 1:length(years)){
     DS <- DS[,!names(DS) %in% c(paste0("BAND", f), "BAND", paste0("webtag", f), "WEBTAG")]
   }
   
-  DT <- DS %>% rename(AGEB = AGE, SEXB = SEX, DATEB= DATE, YEARB = YEAR, !!paste0("PR", f) := !!paste0("RP", f), WEBTAG = WEBTAGB,
-                      BAND = BANDB)
+  DT <- DS %>% rename(AGEB = AGE, SEXB = SEX, DATEB= DATE, YEARB = YEAR, !!paste0("PR", f) := !!paste0("RP", f))
+  DT$WEBTAG <- DT$WEBTAGB
+  DT$BAND <-  DT$BANDB
+  DT <- DT[,!names(DT) %in% c("BANDB", "WEBTAGB")]
   
   DU <- DT[, !names(DT) %in% "COMMENTS"]
   DV <- DS[(!is.na(DT$COMMENTS)), c("COMMENTS", "METAL")] # "BAND", paste0("BAND", f), "WEBTAG", paste0("webtag", f))
@@ -804,7 +804,6 @@ for(f in 1:length(years)){
   DU <- DU %>% mutate_all(as.character)
   FP <- inner_join(DU, FO) #Inner Join since we only want the matches of FO86 in DU86, full_join will return all of DU86 which isn't what we want.
    
-  #***Double check Friday this works on '86 too
   if(nrow(FP) != 0){
     FP[[paste0("MATEM",f)]] <- NA
     FP[[paste0("MATEP",f)]] <- NA
@@ -829,7 +828,7 @@ for(f in 1:length(years)){
   FQ <- FQ %>% rename(BAND = REALBAND)
   
   FR <- full_join(FQ, FM)
-  FR$MATEP86[which(FR[[paste0("mateband",f)]] == "UM")] <- FR[[paste0("mateband",f)]][which(FR[[paste0("mateband",f)]] == "UM")] #lol this looks awful i'm so sorry
+  FR[[paste0("MATEP",f)]][which(FR[[paste0("mateband",f)]] == "UM")] <- FR[[paste0("mateband",f)]][which(FR[[paste0("mateband",f)]] == "UM")] #lol this looks awful i'm so sorry
   FR <- FR[, !names(FR) %in% paste0("mateband",f)]
   
   FS <- full_join(DU, FR)
@@ -909,18 +908,23 @@ for(f in 1:length(years)){
                           !!paste0("ageb",f) := AGEB, !!paste0("sexb",f) := SEXB, 
                           !!paste0("dateb",f) := DATEB, !!paste0("yearb",f) := YEARB)
   
-  #Start here after lunch b/c I don't want to do it rn :)
-  #I knew it was going too well it's just populating mr86 now with mr86.x and idk why - it's because I wasn't calling the object name w/ as.name wow learning growth amazing
-  HN <- full_join(HL, HM, by = c("METAL")) %>%
-    mutate(!!paste0("mr",f) := coalesce(!!as.name(paste0("mr",f,".x")), !!as.name(paste0("mr",f,".y"))),
-           !!paste0("webtag",f) := coalesce(!!as.name(paste0("webtag",f, ".x")), !!as.name(paste0("webtag",f, ".y"))), #Different from '86
-           !!paste0("BAND",f) := coalesce(!!as.name(paste0("BAND",f, ".x")), !!as.name(paste0("BAND",f, ".y"))), #Different from '86
-           !!paste0("dbd",f) := coalesce(!!as.name(paste0("dbd",f, ".x")), !!as.name(paste0("dbd",f, ".y"))),
-           DEL = coalesce(DEL.x, DEL.y),
-    ) %>%
-    select(-!!paste0("mr",f,".x"), -!!paste0("mr",f,".y"), -!!paste0("webtag",f, ".x"), -!!paste0("webtag",f, ".y"), 
-           -!!paste0("BAND",f, ".x"), -!!paste0("BAND",f, ".y"), -!!paste0("dbd",f, ".x"), -!!paste0("dbd",f, ".y"),
-           -DEL.x, -DEL.y)
+   HN <- full_join(HL, HM, by = c("METAL")) 
+   #I couldn't figure out a better way to seperate this out, tried inside a mutate with if but it seems like case_when 
+   #and ifelse are the only real options which isn't what I want :(
+   if(f == "86"){
+     HN <- HN %>% mutate(!!paste0("webtag",f) := coalesce(!!as.name(paste0("webtag",f, ".x")), !!as.name(paste0("webtag",f, ".y"))), #Different from '86
+                         !!paste0("BAND",f) := coalesce(!!as.name(paste0("BAND",f, ".x")), !!as.name(paste0("BAND",f, ".y"))), #Different from '86 
+                        ) %>% 
+                  select( -!!paste0("webtag",f, ".x"), -!!paste0("webtag",f, ".y"), -!!paste0("BAND",f, ".x"), -!!paste0("BAND",f, ".y"))
+     
+   } 
+   #This could be put on the same line as the full_join but I like it visually down here better 
+   HN <- HN %>% mutate(!!paste0("mr",f) := coalesce(!!as.name(paste0("mr",f,".x")), !!as.name(paste0("mr",f,".y"))),
+                       !!paste0("dbd",f) := coalesce(!!as.name(paste0("dbd",f, ".x")), !!as.name(paste0("dbd",f, ".y"))),
+                       DEL = coalesce(DEL.x, DEL.y),
+                      ) %>%
+                select(-!!paste0("mr",f,".x"), -!!paste0("mr",f,".y"), -!!paste0("dbd",f, ".x"), -!!paste0("dbd",f, ".y"),
+                       -DEL.x, -DEL.y)
   
   
   HO <- HN[(is.na(HN$duma) & HN$dumb == "1"),]
@@ -931,16 +935,18 @@ for(f in 1:length(years)){
   HQ <- full_join(FS, HP, by = "METAL") %>% #***I think a right join here would be quicker to get the same outcome, but idk if that could cause issues later??
     mutate(!!paste0("mr",f) := coalesce(!!as.name(paste0("mr",f,".x")), !!as.name(paste0("mr",f,".y"))),
            WEBTAG = coalesce(WEBTAG.x, WEBTAG.y),
-           !!paste0("BAND",f) := coalesce(!!as.name(paste0("BAND",f, ".x")), !!as.name(paste0("BAND",f, ".y"))),
            !!paste0("PR",f) := coalesce(!!as.name(paste0("PR",f, ".x")), !!as.name(paste0("PR",f, ".y"))),
            AGEB = coalesce(AGEB.x, AGEB.y),
            SEXB = coalesce(SEXB.x, SEXB.y),
            DATEB = coalesce(DATEB.x, DATEB.y),
            YEARB = coalesce(YEARB.x, YEARB.y)
     ) %>%
-    select(-!!paste0("mr",f,".x"), -!!paste0("mr",f,".y"), -WEBTAG.x, -WEBTAG.y,  -!!paste0("BAND",f, ".x"), 
-           -!!paste0("BAND",f, ".y"),  -!!paste0("PR",f, ".x"), -!!paste0("PR",f, ".y"), -AGEB.x, -AGEB.y,
+    select(-!!paste0("mr",f,".x"), -!!paste0("mr",f,".y"), -WEBTAG.x, -WEBTAG.y, -!!paste0("PR",f, ".x"), -!!paste0("PR",f, ".y"), -AGEB.x, -AGEB.y,
            -SEXB.x, -SEXB.y, -DATEB.x, -DATEB.y, -YEARB.x, -YEARB.y)
+  if(f == "86"){
+    HQ <- HQ %>% mutate(!!paste0("BAND",f) := coalesce(!!as.name(paste0("BAND",f, ".x")), !!as.name(paste0("BAND",f, ".y")))) %>% 
+                 select(-!!paste0("BAND",f, ".x"), -!!paste0("BAND",f, ".y"))
+  }
   
   HQ <- HQ[which(HQ$DEL == "Y"), !names(HQ) %in% "METAL"]
   
@@ -1196,9 +1202,10 @@ for(f in 1:length(years)){
   NA_ <- HG[,c("METAL", "WEBTAG", "AGEB", "YEARB")] #need a name convention change here b/c it'd just be NA 
   
   NB <- full_join(NA_, LK)
-  NB <- NB[which(NB$WEBTAG != "" & NB$METAL != ""),]
+  #this is wrong, should be 63 so that's fun; this one gets us closest??? But still off
+  NB <- NB[which(NB$WEBTAG != "" & NB$METAL != "" & !is.na(NB$WEBTAG), !is.na(NB$METAL)),] 
   if(nrow(NB) != 0){
-    NB$YEAR <- (NB$YEARB - 1900)
+    NB$YEAR <- (as.numeric(NB$YEARB) - 1900) #***Need to think about this one here for years past '99
     NB <- NB[which(NB$YEAR == f), !names(NB) %in% "YEAR"]
   }else{
     NB <- setNames(data.frame(matrix(nrow = 0, ncol = length(colnames(NB)) )), colnames(NB))
@@ -1225,10 +1232,14 @@ for(f in 1:length(years)){
   }
   
   #NG and NH different from '86
-  #
-  #
-  
-  
+  if(f != "86"){
+    NG <- full_join(NE, AB) #Different from 86
+    NG <- NG[which(NG$DUMA == "Y"), !names(NG) %in% "DUMA"]
+    
+    NH <- full_join(NF, AC)#Diff from 86
+    NH <- NH[which(NH$DUMB == "Y"), !names(NH) %in% "DUMB"]
+  }
+
   ###
   #Sas COMMENTS: each row must have the NH column filled in
   ###

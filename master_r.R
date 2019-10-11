@@ -670,9 +670,13 @@ for(i in 1:nrow(DS86)){
 #***For some reason SAS puts AGE as "A" when i think it should be "ASY". I have no idea where the A could come from
 # in this or in SAS as it doesn't appear until here???????????????????????????? 
 DS86 <- DS86[,!names(DS86) %in% c("NEWMETAL", "duma", "dumb", "DEL", "COUNT", "newmetal", "dumpr86",
-                                  "PR86", "ageb86", "AGEB", "sexb86", "SEXB","dateb86", "DATEB", "yearb86", "YEARB")]
+                                  "PR86", "ageb86", "AGEB", "sexb86", "SEXB","dateb86", "DATEB", 
+                                  "yearb86", "YEARB")]
 
 DT86 <- DS86 %>% rename(AGEB = AGE, SEXB = SEX, DATEB= DATE, YEARB = YEAR, PR86 = RP86)
+#Reasons why this isn't included in the rename: in year '86 we don't delete our Band and Webtag columns like
+#                                               we do in year '87, so if I rename it then we'll have two col's
+#                                               with the same name which isn't cool
 DT86$BAND <- DT86$BANDB #I don't know why I didn't include these in the rename?? 
 DT86$WEBTAG <- DT86$WEBTAGB
 DT86 <- DT86[,!names(DT86) %in% c("BANDB", "WEBTAGB")]
@@ -1189,9 +1193,9 @@ LM86 <- LL86
 NA86 <- HG86[,c("METAL", "WEBTAG", "AGEB", "YEARB")]
 
 NB86 <- full_join(NA86, LK86)
-NB86 <- NB86[which(NB86$WEBTAG != "" & NB86$METAL != ""),]
+NB86 <- NB86[which(NB86$WEBTAG != "" & NB86$METAL != ""),] 
 if(nrow(NB86) != 0){
-  NB86$YEAR <- (NB86$YEARB - 1900)
+  NB86$YEAR <- (as.numeric(NB86$YEARB) - 1900)
   NB86 <- NB86[which(NB86$YEAR == "86"), !names(NB86) %in% "YEAR"]
 }else{
   NB86 <- setNames(data.frame(matrix(nrow = 0, ncol = length(colnames(NB86)) )), colnames(NB86))
@@ -1295,7 +1299,7 @@ AB87 <- LL86
 AC87 <- LM86
 #######
 
-rm(list = grep(pattern = "*86", names(.GlobalEnv), value = TRUE))
+#rm(list = grep(pattern = "*86", names(.GlobalEnv), value = TRUE))
 
 BA87 <- bsc87
 BA87$FILE <- "BS" #Tells us what file this information came from. 
@@ -1769,6 +1773,7 @@ for(i in 1:nrow(DS87)){
   if(!is.na(DS87$webtag87[i]) & is.na(DS87$WEBTAG[i]) ){DS87$WEBTAGB[i] <- DS87$webtag87[i]}
   if(is.na(DS87$webtag87[i]) & !is.na(DS87$WEBTAG[i]) ){DS87$WEBTAGB[i] <- DS87$WEBTAG[i]}
 }
+#This is different from year '86 and i'm not entirely sure why
 DS87 <- DS87[,!names(DS87) %in% c("NEWMETAL", "duma", "dumb", "DEL", "COUNT", "newmetal", "dumpr87",
                                   "PR87", "ageb87", "AGEB", "sexb87", "SEXB", "dateb87", "DATEB",
                                   "yearb87", "YEARB", "BAND87", "BAND", "webtag87", "WEBTAG")]
@@ -2006,7 +2011,7 @@ HP87$METAL <- HP87$mr87
 HQ87 <- full_join(FS87, HP87, by = "METAL") %>% #***I think a right join here would be quicker to get the same outcome, but idk if that could cause issues later??
   mutate(mr87 = coalesce(mr87.x, mr87.y),
          WEBTAG = coalesce(WEBTAG.x, WEBTAG.y),
-         #BAND87 = coalesce(BAND87.x, BAND87.y),
+         #BAND87 = coalesce(BAND87.x, BAND87.y), #different from '86
          PR87 = coalesce(PR87.x, PR87.y),
          AGEB = coalesce(AGEB.x, AGEB.y),
          SEXB = coalesce(SEXB.x, SEXB.y),
@@ -2284,7 +2289,8 @@ LM87 <- bind_rows(LL87, AC87)
 NA87 <- HG87[,c("METAL", "WEBTAG", "AGEB", "YEARB")]
 
 NB87 <- full_join(NA87, LK87)
-NB87 <- NB87[(!is.na(NB87$WEBTAG) & !is.na(NB87$METAL)),] #!is.na here?
+NB87 <- NB87[which(NB87$WEBTAG != "" & NB87$METAL != "" & !is.na(NB87$WEBTAG), !is.na(NB87$METAL)),] 
+  NB87[(!is.na(NB87$WEBTAG) & !is.na(NB87$METAL)),]  #!is.na here?
 if(nrow(NB87) != 0){
   NB87$YEAR <- (as.numeric(NB87$YEARB) - 1900)
   NB87 <- NB87[which(NB87$YEAR == "87"), !names(NB87) %in% "YEAR"]
