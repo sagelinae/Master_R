@@ -1202,10 +1202,10 @@ if(nrow(NB86) != 0){
   NB86 <- NB86 %>% mutate_all(as.character) 
 }
 
-NC86 <- NB86[(NB86$KEEP == "Y"),]
-ND86 <- NB86[(NB86$AGEB == "L" & NB86$KEEP == "Y"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
+NC86 <- NB86[which(NB86$KEEP == "Y"),]
+ND86 <- NB86[which(NB86$AGEB == "L" & is.na(NB86$KEEP)), c("METAL", "WEBTAG", "AGEB", "YEARB")]
 
-NE86 <- NB86[(NB86$AGEB == "SY"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
+NE86 <- NB86[which(NB86$AGEB == "SY"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
 if(nrow(NE86) != 0){
   NE86$DUMA <- "Y"
 }else{
@@ -2284,13 +2284,13 @@ if(nrow(LL87) !=0){LL87$YEAR <- "87"}else{
   LL87 <- LL87 %>% mutate_all(as.character)
 }
 
-LM87 <- bind_rows(LL87, AC87)
+LM87 <- bind_rows(LL87, AC8)
 
 NA87 <- HG87[,c("METAL", "WEBTAG", "AGEB", "YEARB")]
 
 NB87 <- full_join(NA87, LK87)
 NB87 <- NB87[which(NB87$WEBTAG != "" & NB87$METAL != "" & !is.na(NB87$WEBTAG), !is.na(NB87$METAL)),] 
-  NB87[(!is.na(NB87$WEBTAG) & !is.na(NB87$METAL)),]  #!is.na here?
+NB87 <- NB87[(!is.na(NB87$WEBTAG) & !is.na(NB87$METAL)),]  #!is.na here?
 if(nrow(NB87) != 0){
   NB87$YEAR <- (as.numeric(NB87$YEARB) - 1900)
   NB87 <- NB87[which(NB87$YEAR == "87"), !names(NB87) %in% "YEAR"]
@@ -2498,7 +2498,7 @@ OC87 <- OC87[!is.na(OC87$COMMENTS), keep] #Columns saved are the same as keep ab
 
 OD87 <- full_join(NL87, NBR87M)
 OD87$COMMENTS <- as.character(NA)
-OD87$COMMENTS[is.na(OD87$METAL)] <- "Bird seem NB, no banding record"
+OD87$COMMENTS[is.na(OD87$METAL)] <- "Bird seen NB, no banding record"
 OD87 <- OD87[!is.na(OD87$COMMENTS), c("BAND", "SEXB", "COMMENTS", "NBD87", "NBMATEM87", "NBMATEP87")]
 
 OE87 <- full_join(NL87, TOW87M)
