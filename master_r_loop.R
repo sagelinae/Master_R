@@ -171,7 +171,8 @@ PREA <- PREA[keep]
 # 6)for 86, delete the NH86 and NH86 set statements in the NI86 datastep*/ 
 
 lists <- c('BSC','EGG','NEST','RECAP') #List of the type of files will be pulling from
-years <- c(86:99, sprintf("%02d", c(00:15))) #Vector of the different years we'll be looping through
+#years <- c(86:99, sprintf("%02d", c(00:15))) #Vector of the different years we'll be looping through
+years <- c("86", "87", "88")
 
 #A function that will pull all the files we'll need for a specific year
 addToEnv <- function(list, regex){
@@ -181,12 +182,17 @@ addToEnv <- function(list, regex){
   }
 }
 
+
+##########
+#Tuesday: start checking through '87
+##########
+
+
 ###
 #Start of Big Loop^TM
 ###
 
-f = "87"
-for(f in 1:length(years)){
+for(f in years){
   if(f == "86"){
     AA <- PREA
     }else if(f == "87"){
@@ -1202,7 +1208,6 @@ for(f in 1:length(years)){
   NA_ <- HG[,c("METAL", "WEBTAG", "AGEB", "YEARB")] #need a name convention change here b/c it'd just be NA 
   
   NB <- full_join(NA_, LK)
-  #this is wrong, should be 63 so that's fun; this one gets us closest??? But still off
   NB <- NB[which(NB$WEBTAG != "" & NB$METAL != "" & !is.na(NB$WEBTAG), !is.na(NB$METAL)),] 
   if(nrow(NB) != 0){
     NB$YEAR <- (as.numeric(NB$YEARB) - 1900) #***Need to think about this one here for years past '99
@@ -1212,10 +1217,10 @@ for(f in 1:length(years)){
     NB <- NB %>% mutate_all(as.character) 
   }
   
-  NC <- NB[(NB$KEEP == "Y"),]
-  ND <- NB[(NB$AGEB == "L" & NB$KEEP == "Y"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
+  NC <- NB[which(NB$KEEP == "Y"),]
+  ND <- NB[which(NB$AGEB == "L" & is.na(NB$KEEP)), c("METAL", "WEBTAG", "AGEB", "YEARB")]
   
-  NE <- NB[(NB$AGEB == "SY"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
+  NE <- NB[which(NB$AGEB == "SY"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
   if(nrow(NE) != 0){
     NE$DUMA <- "Y"
   }else{
@@ -1273,7 +1278,8 @@ for(f in 1:length(years)){
       NJ$PARENT2M[i] <- NJ[[paste0("PARENT1P",f)]][i]
     }
   }
-  NJ$TAGD <- "   " #***Why do we do this #'non 86 year doesn't do this
+  #I don't like the thing below I don't know why we do it in '86 and I don't want to lol
+  #NJ$TAGD <- "   " #***Why do we do this #'non 86 year doesn't do this
   
   NK <- NJ[(!is.na(NJ$COMMENTS)),]
   if(nrow(NK) != 0){
@@ -1303,31 +1309,37 @@ for(f in 1:length(years)){
                             !!paste0("TMSEX",f) := SEXB, !!paste0("TBS",f) := BRSIZE)
     TOWC <- TOWC[,c("REALBAND", paste0("DTO",f), paste0("TMATEM",f), paste0("TMATEP",f), paste0("TMSEX",f), paste0("TBS",f))]
     
-    TOWD <- TOWC[(is.na(TOWC$TMATEM87)), !names(TOWC) %in% c('TMATEM87', 'TMSEX87')] %>% 
-      rename(PR87 = TMATEP87)
+    TOWD <- TOWC[(is.na(TOWC[[paste0("TMATEM",f)]])), !names(TOWC) %in% c(paste0("TMATEM",f), paste0("TMSEX",f))] %>% 
+               rename(!!paste0("PR",f) := !!paste0("TMATEP",f))
     
-    TOWE <- NL[(!is.na(NL$PR87)),]
+    TOWE <- NL[(!is.na(NL[[paste0("PR",f)]])),]
     
     TOWF <- full_join(TOWE, TOWD)
-    TOWF <- TOWF %>% rename(TMATEM87 = METAL, TMATEP87 = BAND, TMSEX87 = SEXB)
-    TOWF <- TOWF[-which(is.na(TOWF$REALBAND) | is.na(TOWF$TMATEM87)), c('REALBAND', 'DTO87', 'TBS87', 'TMATEM87', 'TMATEP87', 'TMSEX87')]
+    TOWF <- TOWF %>% rename(!!paste0("TMATEM",f) := METAL, !!paste0("TMATEP",f) := BAND, !!paste0("TMSEX",f) := SEXB)
+    TOWF <- TOWF[-which(is.na(TOWF$REALBAND) | is.na(TOWF[[paste0("TMATEM",f)]])), c('REALBAND', paste0("DTO",f), paste0("TBS",f), paste0("TMATEM",f), 
+                                                                        paste0("TMATEP",f), paste0("TMSEX",f))]
     
     TOWG <- bind_rows(TOWC, TOWF) 
     TOWG <- TOWG %>% rename(BAND = REALBAND)
     
-    TOWH <- TOWER[which(TOWER$YEAR == "1987" & (is.na(TOWER$MATE) | TOWER$MATE == "UM" | TOWER$MATE == "NO")), !names(TOWER) %in% "YEAR"]
-    TOWH <- TOWH %>% rename(DTO87 = DATE, TMATEP87 = MATE, TBS87 = BRSIZE)
-    TOWH$TMATEM87 <- as.character(NA)
+    #Figures out the full year
+    if(f < 50){full_year <- paste0("20",f)}else(full_year <- paste0("19",f))
+    
+    TOWH <- TOWER[which(TOWER$YEAR == full_year & (is.na(TOWER$MATE) | TOWER$MATE == "UM" | TOWER$MATE == "NO")), !names(TOWER) %in% "YEAR"]
+    TOWH <- TOWH %>% rename(!!paste0("DTO",f) := DATE, !!paste0("TMATEP",f) := MATE, !!paste0("TBS",f) := BRSIZE)
+    TOWH[[paste0("TMATEM",f)]] <- as.character(NA)
     
     
     TOWI <- full_join(TOWH, TOWG) %>% full_join(.,NL)
-    TOWI <- TOWI[-which(!is.na(TOWI$METAL)), c("BAND","DTO87", "TMATEM87", "TMATEP87", "TBS87")] %>% rename(PR87 = BAND)
+    TOWI <- TOWI[-which(!is.na(TOWI$METAL)), c("BAND",paste0("DTO",f), paste0("TMATEM",f),paste0("TMATEP",f), paste0("TBS",f))] %>%
+              rename(!!paste0("PR",f) := BAND)
     
-    TOWJ <- NL[(!is.na(NL$PR87)),] #same as tow87e?
+    TOWJ <- NL[(!is.na(NL[[paste0("PR",f)]])),] #same as tow87e?
     
     TOWK <- full_join(TOWJ, TOWI)
     #***Double check below when there's a year that fits it b/c I'm not sure the which statement is correct.
-    TOWK <- TOWK[-which(is.na(TOWK$METAL) & (is.na(TOWK$DTO87) & is.na(TOWK$TMATEP87))), c("BAND", "DTO87", "TMATEM87", "TMATEP87", "TBS87")]
+    TOWK <- TOWK[-which(is.na(TOWK$METAL) & (is.na(TOWK[[paste0("DTO",f)]]) & is.na(TOWK[[paste0("TMATEP",f)]]))), 
+                 c("BAND", paste0("DTO",f), paste0("TMATEM",f), paste0("TMATEP",f), paste0("TBS",f))]
     
     TOWL <- bind_rows(TOWG, TOWH, TOWK)
     TOWL$COUNT <- 1
@@ -1337,87 +1349,90 @@ for(f in 1:length(years)){
     CheckReplicates <- Mistakes(x = TOWM, groupby = "BAND", yeardf = BA, CheckReplicates)
     TOWM <- TOWM[!(TOWM$COUNT > 1), !names(TOWM) %in% "COUNT"]
     
-    NBRA <- NBBAND[(NBBAND$YEAR == "1987"),] %>% rename(REALBAND = BAND, NBC87 = NBCOL)
+    NBRA <- NBBAND[(NBBAND$YEAR == full_year),] %>% rename(REALBAND = BAND, !!paste0("NBC",f) := NBCOL)
     
     NBRB <- NBRA %>% rename(BAND = MATE)
     NBRB <- NBRB[-which(is.na(NBRB$BAND) | NBRB$BAND == "UM" | NBRB$BAND == "NO"),]
     
     NBRC <- full_join(NBRB, NL) 
-    NBRC <- NBRC[-which(is.na(NBRC$REALBAND)), c("REALBAND", "DATE", "METAL", "BAND", "SEXB", "NBC87")] %>% 
-      rename(NBD87 = DATE, NBMATEM87 = METAL, NBMATEP87 = BAND, NBMSEX87 = SEXB)
-    NBRD <- NBRC[which(is.na(NBRC$NBMATEM87)), !names(NBRC) %in% c("NBMATEM87", "NBMSEX87")] %>% rename(PR87 = NBMATEP87)
+    NBRC <- NBRC[-which(is.na(NBRC$REALBAND)), c("REALBAND", "DATE", "METAL", "BAND", "SEXB", paste0("NBC",f))] %>% 
+              rename(!!paste0("NBD",f) := DATE, !!paste0("NBMATEM",f) := METAL, !!paste0("NBMATEP",f) := BAND, 
+                           !!paste0("NBMSEX",f) := SEXB)
+    NBRD <- NBRC[which(is.na(NBRC[[paste0("NBMATEM",f)]])), !names(NBRC) %in% c(paste0("NBMATEM",f), paste0("NBMSEX",f))] %>% 
+              rename(!!paste0("PR",f) := !!paste0("NBMATEP",f))
     
-    NBRE <- NL[(!is.na(NL$PR87)),]
+    NBRE <- NL[(!is.na(NL[[paste0("PR",f)]])),]
     
     NBRF <- full_join(NBRE, NBRD)
     NBRF <- NBRF[-which(is.na(NBRF$REALBAND) | is.na(NBRF$METAL)), 
-                     c("REALBAND", "METAL", "NBD87", "BAND", "SEXB", "NBC87")] %>% rename(NBMATEM87 = METAL, 
-                                                                                          NBMATEP87 = BAND, NBMSEX87 = SEXB)
+                     c("REALBAND", "METAL", paste0("NBD",f), "BAND", "SEXB", paste0("NBC",f))] %>% 
+              rename(!!paste0("NBMATEM",f) := METAL, !!paste0("NBMATEP",f) := BAND, !!paste0("NBMSEX",f) := SEXB)
+    
     NBRG <- bind_rows(NBRC, NBRF) %>% rename(BAND = REALBAND)
     
-    NBRH <- NBBAND[which(NBBAND$YEAR == "1987" & (is.na(NBBAND$MATE) | NBBAND$MATE == "UM" | 
+    NBRH <- NBBAND[which(NBBAND$YEAR == full_year & (is.na(NBBAND$MATE) | NBBAND$MATE == "UM" | 
                                                       NBBAND$MATE == "NO")), !names(NBBAND) %in% "YEAR"]
-    NBRH <- NBRH %>% rename(NBD87 = DATE, NBMATEP87 = MATE, NBC87 = NBCOL)
-    NBRH$NBMATEM87 <- as.character(NA)
+    NBRH <- NBRH %>% rename(!!paste0("NBD",f) := DATE, !!paste0("NBMATEP",f) := MATE, !!paste0("NBC",f) := NBCOL)
+    NBRH[[paste0("NBMATEM",f)]] <- as.character(NA)
     
-    NBRI <- full_join(NBRG, NBRH) %>% full_join(., NL87)
-    NBRI <- NBRI[-which(!is.na(NBRI$METAL)),c("BAND", "NBC87","NBD87", "NBMATEM87", "NBMATEP87")] %>% 
-      rename(PR87 = BAND)
-    NBRJ <- NL87[(!is.na(NL87$PR87)),] #same as something we did above in like tower or something 
+    NBRI <- full_join(NBRG, NBRH) %>% full_join(., NL)
+    NBRI <- NBRI[-which(!is.na(NBRI$METAL)),c("BAND", paste0("NBC",f),paste0("NBD",f), paste0("NBMATEM",f), paste0("NBMATEP",f))] %>% 
+              rename(!!paste0("PR",f) := BAND)
+    NBRJ <- NL[(!is.na(NL[[paste0("PR",f)]])),] #same as something we did above in like tower or something 
     
     NBRK <- full_join(NBRJ, NBRI) 
-    NBRK <- NBRK[!(is.na(NBRK$METAL) | (is.na(NBRK$NBD87) & is.na(NBRK$NBMATEP87)) ), 
-                     c("BAND", "NBD87", "NBMATEM87", "NBMATEP87", "NBC87")] #*** Check Operators here again they confuse me a lot lol
+    NBRK <- NBRK[!(is.na(NBRK$METAL) | (is.na(NBRK[[paste0("NBD",f)]]) & is.na(NBRK[[paste0("NBMATEP",f)]])) ), 
+                     c("BAND", paste0("NBD",f), paste0("NBMATEM",f), paste0("NBMATEP",f), paste0("NBC",f))] #*** Check Operators here again they confuse me a lot lol
     NBRL <- bind_rows(NBRG, NBRH, NBRK)
     NBRL$COUNT <- 1
     
     #find duplicate bands from NBRL
     NBRM <- NBRL %>% group_by(BAND) %>% mutate(COUNT = sum(COUNT))
-    CheckReplicates <- Mistakes(x = NBRM, groupby = "BAND", yeardf = BA87, CheckReplicates)
+    CheckReplicates <- Mistakes(x = NBRM, groupby = "BAND", yeardf = BA, CheckReplicates)
     NBRM <- NBRM[!(NBRM$COUNT > 1), !names(NBRM) %in% "COUNT"]
     
     NN <- full_join(NL, TOWM) %>% full_join(., NBRM)
     NN <- NN[!(is.na(NN$METAL)),]
     
-    OA <- NN[!(is.na(NN$MATEM87) & is.na(NN$NBMATEM87) & is.na(NN$TMATEM87) & is.na(NN$MATEP87) &
-                     is.na(NN$NBMATEP87) & is.na(NN$TMATEP87)),]
+    OA <- NN[!(is.na(NN[[paste0("MATEM",f)]]) & is.na(NN[[paste0("NBMATEM",f)]]) & is.na(NN[[paste0("TMATEM",f)]]) & 
+                 is.na(NN[[paste0("MATEP",f)]]) & is.na(NN[[paste0("NBMATEP",f)]]) & is.na(NN[[paste0("TMATEP",f)]])),]
     OA$COMMENTS <- as.character(NA)
     
     for(i in 1:nrow(OA)){
-      if( (!is.na(OA$MATEP87[i]) & !is.na(OA$TMATEP87[i]) & (OA$MATEP87[i] != OA$TMATEP87[i])) |
-          (!is.na(OA$MATEP87[i]) & !is.na(OA$NBMATEP87[i]) & (OA$MATEP87[i] != OA$NBMATEP87[i])) |
-          (!is.na(OA$TMATEP87[i]) & !is.na(OA$NBMATEP87[i]) & (OA$TMATEP87[i] != OA$NBMATEP87[i]))
+      if( (!is.na(OA[[paste0("MATEP",f)]][i]) & !is.na(OA[[paste0("TMATEP",f)]][i]) & (OA[[paste0("MATEP",f)]][i] != OA[[paste0("TMATEP",f)]][i])) |
+          (!is.na(OA[[paste0("MATEP",f)]][i]) & !is.na(OA[[paste0("NBMATEP",f)]][i]) & (OA[[paste0("MATEP",f)]][i] != OA[[paste0("NBMATEP",f)]][i])) |
+          (!is.na(OA[[paste0("TMATEP",f)]][i]) & !is.na(OA[[paste0("NBMATEP",f)]][i]) & (OA[[paste0("TMATEP",f)]][i] != OA[[paste0("NBMATEP",f)]][i]))
       ){
         OA$COMMENTS[i] <- "Mate changed within year"
       }
     }
-    keep <- c("METAL", "BAND", "MATEM87", "MATEP87", "NBD87", "NBMATEM87", "NBMATEP87", "DTO87", 
-              "TMATEM87", "TMATEP87", "TBS87", "COMMENTS")
+    keep <- c("METAL", "BAND", paste0("MATEM",f), paste0("MATEP",f), paste0("NBD",f), paste0("NBMATEM",f), paste0("NBMATEP",f), 
+              paste0("DTO",f), paste0("TMATEM",f), paste0("TMATEP",f), paste0("TBS",f), "COMMENTS")
     OA <- OA[!(is.na(OA$COMMENTS)), keep]
     
-    OB <- NN[!(is.na(NN$NMSEX87) & is.na(NN$TMSEX87) & is.na(NN$NBMSEX87)),]
+    OB <- NN[!(is.na(NN[[paste0("NMSEX",f)]]) & is.na(NN[[paste0("TMSEX",f)]]) & is.na(NN[[paste0("NBMSEX",f)]])),]
     OB$COMMENTS <- as.character(NA)
-    OB$COMMENTS[(OB$NMSEX87 == OB$SEXB) | (OB$TMSEX87 == OB$SEXB)| 
-                    (OB$NBMSEX87 == OB$SEXB)] <- "Same sex pair" #hell yeah gay bird rights
-    keep <- c("METAL", "BAND", "SEXB", "MATEM87", "MATEP87", "NBD87", "NBMATEM87", "NBMATEP87", "NBMSEX87", 
-              "DTO87", "TMATEM87", "TMATEP87", "TBS87", "TMSEX87", "COMMENTS")
+    OB$COMMENTS[(OB[[paste0("NMSEX",f)]] == OB$SEXB) | (OB[[paste0("TMSEX",f)]] == OB$SEXB)| 
+                    (OB[[paste0("NBMSEX",f)]] == OB$SEXB)] <- "Same sex pair" #hell yeah gay bird rights
+    keep <- c("METAL", "BAND", "SEXB", paste0("MATEM",f), paste0("MATEP",f), paste0("NBD",f), paste0("NBMATEM",f), paste0("NBMATEP",f), 
+              paste0("NBMSEX",f), paste0("DTO",f), paste0("TMATEM",f), paste0("TMATEP",f), paste0("TBS",f), paste0("TMSEX",f), "COMMENTS")
     OB <- OB[!is.na(OB$COMMENTS), keep]
     
     OC <- NN
     OC$COMMENTS <- as.character(NA)
-    OC$COMMENTS[((OC$BBLAGE == "L" & OC$BBLYEAR == "1986" & !is.na(OC$n87))|
-                     (OC$BBLAGE == "L" & OC$BBLYEAR == "1986" & OC$TBS87 > 0))] <- "Breeding SY bird"
+    OC$COMMENTS[((OC$BBLAGE == "L" & OC$BBLYEAR == "1986" & !is.na(OC[[paste0("n",f)]]))|
+                     (OC$BBLAGE == "L" & OC$BBLYEAR == "1986" & OC[[paste0("TBS",f)]] > 0))] <- "Breeding SY bird"
     OC <- OC[!is.na(OC$COMMENTS), keep] #Columns saved are the same as keep above so not changing it
     
-    OD <- full_join(NL87, NBRM)
+    OD <- full_join(NL, NBRM)
     OD$COMMENTS <- as.character(NA)
-    OD$COMMENTS[is.na(OD$METAL)] <- "Bird seem NB, no banding record"
-    OD <- OD[!is.na(OD$COMMENTS), c("BAND", "SEXB", "COMMENTS", "NBD87", "NBMATEM87", "NBMATEP87")]
+    OD$COMMENTS[is.na(OD$METAL)] <- "Bird seen NB, no banding record"
+    OD <- OD[!is.na(OD$COMMENTS), c("BAND", "SEXB", "COMMENTS", paste0("NBD",f), paste0("NBMATEM",f), paste0("NBMATEP",f))]
     
     OE <- full_join(NL, TOWM)
     OE$COMMENTS <- as.character(NA)
     OE$COMMENTS[is.na(OE$METAL)] <- "Bird seen tower, no banding record"
-    OE <- OE[!is.na(OE$COMMENTS),c("BAND", "SEXB", "COMMENTS", "DTO87", "TMATEM87", "TMATEP87", "TBS87")]
+    OE <- OE[!is.na(OE$COMMENTS),c("BAND", "SEXB", "COMMENTS", paste0("DTO",f), paste0("TMATEM",f), paste0("TMATEP",f), paste0("TBS",f))]
     
     ERRORS <- bind_rows(ERRORS, BW, BX, DV, FT, HB, HB, JJ, NK, OA, OB, OC, OD, OE)
     
