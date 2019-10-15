@@ -747,7 +747,7 @@ FE86 <- group_by(FD86, BAND, .drop = FALSE) %>% mutate(COUNT = sum(COUNT)) #I do
 CheckReplicates <- Mistakes(x = FE86, groupby = "BAND", yeardf = BA86,CheckReplicates)
 
 
-FF86 <- FE86[FE86$COUNT == 1,]
+FF86 <- FE86[FE86$COUNT == 1, c("BAND", "COUNT")]
 FF86$DEL <- "N"
 
 FG86 <- FE86[FE86$COUNT > 1,]
@@ -796,20 +796,13 @@ if(nrow(FO86) != 0){FO86$DUM <- "Y"}else{
 }
 
 DU86 <- DU86 %>% mutate_all(as.character)
-FP86 <- inner_join(DU86, FO86) #Inner Join since we only want the matches of FO86 in DU86, full_join will return all of DU86 which isn't what we want.
+FP86 <- full_join(DU86, FO86) #Shouldn't actually be inner join lmao, full join
+FP86 <- FP86[which(FP86$DUM == "Y"),]
 
-#***This instead of the for loop? Test when there's something to actually test on?
-#FP86$MATEM86[which(FP86$DUM == "Y")] <- FP86$METAL[which(FP86$DUM == "Y")]
-#FP86$MATEP86[which(FP86$DUM == "Y")] <- FP86$mateband86[which(FP86$DUM == "Y")]
 if(nrow(FP86) != 0){
-  FP86$MATEM86 <- NA
-  FP86$MATEP86 <- NA
-  for(i in 1:nrow(FP86)){
-    if(FP86$DUM[i] == "Y" & !is.na(FP86$DUM[i])){
-      FP86$MATEM86[i] <- FP86$METAL[i]
-      FP86$MATEP86[i] <- FP86$mateband86[i]
-    }
-  }
+  FP86$MATEM86 <- FP86$METAL
+  FP86$MATEP86 <- FP86$mateband86
+   
   FP86 <- FP86[,c('MATEM86', 'NEST', 'MATEP86', 'n86', 'CS86', 'ID86', 'HD86', 'REALBAND'),]
 }else{
   FP86 <- setNames(data.frame(matrix(ncol = 8, nrow = 0)), c('MATEM86', 'NEST', 'MATEP86', 'n86', 
@@ -1132,21 +1125,18 @@ LD86$PARENT1P <- as.character(NA)
 LD86$PARENT2P <- as.character(NA)
 for(i in 1:nrow(LD86)){
   #Some cleaning up could happen here: what happens if there's a band but no color, should it be AO2_ or just AO2?
-  # band <- str_pad(LD86$BAND[i], 3, side = "right") 
-  # color <- str_replace_na(LD86$C1[i], "")
   
-  if(!is.na(LD86$BAND[i])){
+  if(!is.na(LD86$BAND[i]) | !is.na(LD86$C1[i])){
     color <- str_replace_na(LD86$C1[i], "")
-    LD86$PARENT1P[i] <- paste0(LD86$BAND[i], color)
+    band <- str_replace_na(LD86$BAND[i], "")
+    LD86$PARENT1P[i] <- paste0(band, color)
   }
   
-  if(!is.na(LD86$MATE[i])){
+  if(!is.na(LD86$MATE[i]) | !is.na(LD86$C2[i])){
     color2 <- str_replace_na(LD86$C2[i], "")
-    LD86$PARENT2P[i] <- paste0(LD86$MATE[i], color2)
+    mate <- str_replace_na(LD86$MATE[i], "")
+    LD86$PARENT2P[i] <- paste0(mate, color2)
   }
-  
-  # band2 <- str_pad((str_replace_na(LD86$MATE[i], " ")), 3, side = 'right')
-  # color2 <- str_replace_na(LD86$C2[i], "")
 }
 LD86 <- LD86[,c("NEST", "PARENT1P", "PARENT2P")]
 
@@ -1843,7 +1833,7 @@ FE87 <- group_by(FD87, BAND, .drop = FALSE) %>% mutate(COUNT = sum(COUNT))
 CheckReplicates <- Mistakes(x = FE87, groupby = "BAND", yeardf = BA87, CheckReplicates)
 
 
-FF87 <- FE87[(FE87$COUNT == 1),]
+FF87 <- FE87[(FE87$COUNT == 1), c("BAND", "COUNT")]
 FF87$DEL <- "N"
 
 FG87 <- FE87[(FE87$COUNT > 1),]
@@ -1892,19 +1882,14 @@ if(nrow(FO87) != 0){FO87$DUM <- "Y"}else{
 
 #This takes a while, track classes throughout to make it better
 DU87 <- DU87 %>% mutate_all(as.character)
-FP87 <- inner_join(DU87, FO87)
+FP87 <- full_join(DU87, FO87)
+FP87 <- FP87[which(FP87$DUM == "Y"),]
 
 if(nrow(FP87) != 0){
-  FP87$MATEM87 <- NA
-  FP87$MATEP87 <- NA
-  FP87$NMSEX87 <- NA #Different from '86
-  for(i in 1:nrow(FP87)){
-    if(FP87$DUM[i] == "Y" & !is.na(FP87$DUM[i])){
-      FP87$MATEM87[i] <- FP87$METAL[i]
-      FP87$MATEP87[i] <- FP87$mateband87[i]
-      FP87$NMSEX87[i] <- FP87$SEXB[i]
-    }
-  }
+  FP87$MATEM87 <- FP87$METAL
+  FP87$MATEP87 <- FP87$mateband87
+  FP87$NMSEX87 <- FP87$SEXB
+  
   FP87 <- FP87[,c('MATEM87', 'NEST', 'MATEP87', 'NMSEX87','n87', 'CS87', 'ID87', 'HD87', 'REALBAND'),]
 }else{
   FP87 <- setNames(data.frame(matrix(ncol = 8, nrow = 0)), c('MATEM87', 'NEST', 'MATEP87', 'N87',
@@ -2228,21 +2213,18 @@ LD87$PARENT1P <- NA
 LD87$PARENT2P <- NA
 for(i in 1:nrow(LD87)){
   #Some cleaning up could happen here: what happens if there's a band but no color, should it be AO2_ or just AO2?
-  # band <- str_pad(LD87$BAND[i], 3, side = "right") 
-  # color <- str_replace_na(LD87$C1[i], "")
   
-  if(!is.na(LD87$BAND[i])){
+  if(!is.na(LD87$BAND[i]) | !is.na(LD87$C1[i])){
     color <- str_replace_na(LD87$C1[i], "")
-    LD87$PARENT1P[i] <- paste0(LD87$BAND[i], color)
+    band <- str_replace_na(LD87$BAND[i], "")
+    LD87$PARENT1P[i] <- paste0(band, color)
   }
   
-  if(!is.na(LD87$MATE[i])){
+  if(!is.na(LD87$MATE[i]) | !is.na(LD87$C2[i])){
     color2 <- str_replace_na(LD87$C2[i], "")
-    LD87$PARENT2P[i] <- paste0(LD87$MATE[i], color2)
+    mate <- str_replace_na(LD87$MATE[i], "")
+    LD87$PARENT2P[i] <- paste0(mate, color2)
   }
-  
-  # band2 <- str_pad((str_replace_na(LD87$MATE[i], " ")), 3, side = 'right')
-  # color2 <- str_replace_na(LD87$C2[i], "")
 }
 LD87 <- LD87[,c("NEST", "PARENT1P", "PARENT2P")]
 

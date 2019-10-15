@@ -7,6 +7,8 @@ library(foreign)
 library(dplyr)
 library(stringr)
 
+SASLG88 <- read.csv("X:\\brant_data\\SASLG88.csv")
+
 #Creates and empty dataframe where we'll store instances where a band or metal is repeated so we can look into
 # the data and check for mistakes later
 CheckReplicates <- setNames(data.frame(matrix(ncol = 3, nrow = 0)), c("ID", "FROM", "METAL"))
@@ -170,10 +172,6 @@ PREA <- PREA[keep]
 # 5)for 86, delete the NG86 and NH86 steps
 # 6)for 86, delete the NH86 and NH86 set statements in the NI86 datastep*/ 
 
-lists <- c('BSC','EGG','NEST','RECAP') #List of the type of files will be pulling from
-#years <- c(86:99, sprintf("%02d", c(00:15))) #Vector of the different years we'll be looping through
-years <- c("86", "87", "88")
-
 #A function that will pull all the files we'll need for a specific year
 addToEnv <- function(list, regex){
   for(i in list){
@@ -182,10 +180,9 @@ addToEnv <- function(list, regex){
   }
 }
 
-
-##########
-#Tuesday: start checking through '87
-##########
+lists <- c('BSC','EGG','NEST','RECAP') #List of the type of files will be pulling from
+#years <- c(86:99, sprintf("%02d", c(00:15))) #Vector of the different years we'll be looping through
+years <- c("86", "87", "88")
 
 
 ###
@@ -516,7 +513,7 @@ for(f in years){
   DE <- merge(DA, DD, by = c("METAL", "DATE"))
   DE <- DE[(!is.na(DE$COUNTsum)), !names(DE) %in% c(paste0("Nc", f), paste0("Nt", f))]
   
-  DF <- DE %>% group_by(METAL) %>% mutate(COUNT = sum(COUNTsum)) # %>% summarise_all(~last(.[which(!is.na(.) & (. != ""))]))
+  DF <- DE %>% group_by(METAL) %>% mutate(COUNT = sum(COUNTsum)) 
   CheckReplicates <- Mistakes(DF, groupby="METAL", yeardf = BA ,CheckReplicates)
   DF <- DF[!(DF$COUNT > 1),!names(DF) %in% c(paste0("n", f), "COUNTsum")]
   
@@ -754,19 +751,21 @@ for(f in years){
   FD <- FC
   FD$COUNT <- 1
   
-  FE <- group_by(FD, BAND, .drop = FALSE) %>% mutate(COUNT = sum(COUNT)) #I don't remember why I included .drop = false here lol
+  FE <- group_by(FD, BAND) %>% mutate(COUNT = sum(COUNT)) #I don't remember why I included .drop = false here lol
   CheckReplicates <- Mistakes(x = FE, groupby = "BAND", yeardf = BA,CheckReplicates)
+  #This will be off for years where there are duplicates, since I'm not condensing anything we will have more
   
-  FF <- FE[FE$COUNT == 1,]
+  FF <- FE[FE$COUNT == 1, c("BAND", "COUNT")]
   FF$DEL <- "N"
   
-  FG <- FE[FE$COUNT > 1,]
+  FG <- FE[FE$COUNT > 1, c("BAND", "COUNT")] 
+  #This is going to be off since I didn't condense it down, it shouldn't make a difference in deleting since it's still the same names
   if(nrow(FG) != 0){FG$DEL <- "Y"}else{
     FG <- setNames(data.frame(matrix(ncol = (length(colnames(FG)) + 1), nrow = 0)), c(colnames(FG), "DEL"))
     FG <- FG %>% mutate_all(as.character)
   }
   
-  FI <- full_join(FG, FC) #was left
+  FI <- full_join(FG, FC) 
   FI <- FI[which(FI$DEL == "Y"),]
   if(nrow(FI) != 0){
     FI$dud <- 1
@@ -808,20 +807,14 @@ for(f in years){
   }
   
   DU <- DU %>% mutate_all(as.character)
-  FP <- inner_join(DU, FO) #Inner Join since we only want the matches of FO86 in DU86, full_join will return all of DU86 which isn't what we want.
-   
+  FP <- full_join(DU, FO) #Not inner join lmao
+  FP <- FP[which(FP$DUM == "Y"),] 
+  
   if(nrow(FP) != 0){
-    FP[[paste0("MATEM",f)]] <- NA
-    FP[[paste0("MATEP",f)]] <- NA
-    if(f != "86"){FP[[paste0("NMSEX",f)]] <- NA}
-    i = 1
-    for(i in 1:nrow(FP)){
-      if(FP$DUM[i] == "Y" & !is.na(FP$DUM[i])){
-        FP[[paste0("MATEM",f)]][i] <- FP$METAL[i]
-        FP[[paste0("MATEP",f)]][i] <- FP[[paste0("mateband",f)]][i]
-        if(f != "86"){FP[[paste0("NMSEX",f)]][i] <- FP$SEXB[i]}
-      }
-    }
+    FP[[paste0("MATEM",f)]]<- FP$METAL
+    FP[[paste0("MATEP",f)]] <- FP[[paste0("mateband",f)]]
+    if(f != "86"){FP[[paste0("NMSEX",f)]] <- FP$SEXB}
+    
     FP <- FP[,c(paste0("MATEM",f), 'NEST', paste0("MATEP",f), paste0("n",f), paste0("CS",f), paste0("ID",f), 
                 paste0("HD",f), 'REALBAND', if(f != "86"){paste0("NMSEX",f)})]
   }else{
@@ -879,7 +872,7 @@ for(f in years){
     HB <- HB %>% mutate_all(as.character())
   }
   
-  HC <- HA[(HA$METAL != "" & !is.na(HA$METAL)),] #Changed from "." to ""
+  HC <- HA[(HA$METAL != "" & !is.na(HA$METAL)),] 
   HC[[paste0("Bc",f)]] <- as.numeric(HC[[paste0("Bc",f)]])
   HC[[paste0("Bt",f)]] <- as.numeric(HC[[paste0("Bt",f)]])
   #I'm not sure about this one either on if I should pull out duplicates or not.
@@ -890,13 +883,16 @@ for(f in years){
   HE <- full_join(HA, HD)
   HE <- HE[(!is.na(HE$COUNTsum)), !names(HE) %in% c(paste0("Bc",f), paste0("Bt",f))]
   
+  #This may be off from SAS since again I don't condense duplicates, instead I flag them into CheckReplicates
+  #  and get rid of them so we don't include it. 
   HF <- HE[,!names(HE) %in% "COUNTsum"]
-  HF <- HF %>% group_by(METAL) %>% mutate(COUNT = sum(COUNT)) #%>% summarise_all(~last(.[which(!is.na(.) & (. != ""))]))
+  HF <- HF %>% group_by(METAL) %>% mutate(COUNT = sum(COUNT)) 
   CheckReplicates <- Mistakes(HF, groupby = "METAL", yeardf = BA, CheckReplicates)
   HF <- HF[!(HF$COUNT > 1),]
   
   HG <- HF %>% rename(!!paste0("BC",f) := !!paste0("meanbc",f), !!paste0("BT",f) := !!paste0("meanbt",f))
-  HH <- HG[(!is.na(HG$NEWMETAL) ), !names(HG) %in% "METAL"] #changed from !="." to !is.na
+  
+  HH <- HG[(!is.na(HG$NEWMETAL) ), !names(HG) %in% "METAL"] 
   HH$DEL <- "Y"
   
   HI <- HH[,c(paste0("mr",f),"DEL")] %>% rename(METAL = !!paste0("mr",f))
@@ -907,7 +903,7 @@ for(f in years){
   HL <- HL[-which(HL$DEL == "Y"),]
   HL$duma <- "1"
   
-  HM <- full_join(HG, HK)
+  HM <- full_join(HG, HK) #Might be missing things compared to SAS since I took out duplicates in HG
   HM <- HM[-which(HM$DEL == "Y"),]
   HM$dumb <- "1"
   HM <- HM %>% rename(!!paste0("dumpr",f) := !!paste0("PR",f), !!paste0("webtag",f) := WEBTAG, !!paste0("dbd",f) := DATE, 
@@ -1154,13 +1150,17 @@ for(f in years){
   LD$PARENT2P <- as.character(NA)
   for(i in 1:nrow(LD)){
     #Some cleaning up could happen here: what happens if there's a band but no color, should it be AO2_ or just AO2?
-    if(!is.na(LD$BAND[i])){
+    
+    #Runs as long as one of either band or color isn't NA. Will only NOT run if both are NA
+    if(!is.na(LD$BAND[i]) | !is.na(LD$C1[i])){
       color <- str_replace_na(LD$C1[i], "")
-      LD$PARENT1P[i] <- paste0(LD$BAND[i], color)
+      band <- str_replace_na(LD$BAND[i], "")
+      LD$PARENT1P[i] <- paste0(band, color)
     }
-    if(!is.na(LD$MATE[i])){
+    if(!is.na(LD$MATE[i]) | !is.na(LD$C2[i])){
       color2 <- str_replace_na(LD$C2[i], "")
-      LD$PARENT2P[i] <- paste0(LD$MATE[i], color2)
+      mate <- str_replace_na(LD$MATE[i], "")
+      LD$PARENT2P[i] <- paste0(mate, color2)
     }
   }
   LD <- LD[,c("NEST", "PARENT1P", "PARENT2P")]
@@ -1437,9 +1437,6 @@ for(f in years){
     ERRORS <- bind_rows(ERRORS, BW, BX, DV, FT, HB, HB, JJ, NK, OA, OB, OC, OD, OE)
     
   }
-  
-  
-
   
   #86 #tHIS IS Just for replacing stuff so it doesn't move me all the way back up can be deleted later 
 }
