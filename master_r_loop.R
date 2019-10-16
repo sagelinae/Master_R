@@ -7,7 +7,7 @@ library(foreign)
 library(dplyr)
 library(stringr)
 
-SASLG88 <- read.csv("X:\\brant_data\\SASLG88.csv")
+#SASLG88 <- read.csv("X:\\brant_data\\SASLG88.csv")
 
 #Creates and empty dataframe where we'll store instances where a band or metal is repeated so we can look into
 # the data and check for mistakes later
@@ -180,9 +180,16 @@ addToEnv <- function(list, regex){
   }
 }
 
+
+
 lists <- c('BSC','EGG','NEST','RECAP') #List of the type of files will be pulling from
 #years <- c(86:99, sprintf("%02d", c(00:15))) #Vector of the different years we'll be looping through
 years <- c("86", "87", "88")
+
+#This a tad confusing, so we work with winter years the year before. So for example when coding for year 90 
+#we have code for WINTER91; so winteryrs are the years that will correlate w/ f for where we should run 
+#winter code, and not the years that the winter code is... i'm so sorry 
+winteryrs <- c("90":"99", sprintf("%02d", c("00":"05")), "10":"12")
 
 
 ###
@@ -556,7 +563,7 @@ for(f in years){
   DO <- DN[( is.na(DN$duma) & DN$dumb == "1"),] #Changed duma = "" to be is.na, since from my dumb test I think that's what it'd be
   
   DP <- DH 
-  DP$METAL <- DP[[paste0("mr",f)]]
+  DP$METAL <- as.character(DP[[paste0("mr",f)]])
 
   DQ <- full_join(AA, DP)
   DQ <- DQ[which(DQ$DEL == "Y"),!names(DQ) %in% "METAL"]
@@ -893,12 +900,15 @@ for(f in years){
   HG <- HF %>% rename(!!paste0("BC",f) := !!paste0("meanbc",f), !!paste0("BT",f) := !!paste0("meanbt",f))
   
   HH <- HG[(!is.na(HG$NEWMETAL) ), !names(HG) %in% "METAL"] 
-  HH$DEL <- "Y"
+  if(nrow(HH) != 0){HH$DEL <- "Y"}else{
+    HH <- setNames(data.frame(matrix(ncol = (length(colnames(HH)) + 1), nrow = 0)), c(colnames(HH), "DEL"))}
   
   HI <- HH[,c(paste0("mr",f),"DEL")] %>% rename(METAL = !!paste0("mr",f))
   HJ <- HH[,c("NEWMETAL", "DEL")] %>% rename(METAL = NEWMETAL)
   
   HK <- bind_rows(HI, HJ)
+  
+  ### Thursday, start here; how to join when one df is empty and is then a logical; maybe dplyr w/ a mutate?
   HL <- full_join(FS, HK) 
   HL <- HL[-which(HL$DEL == "Y"),]
   HL$duma <- "1"
@@ -963,9 +973,8 @@ for(f in years){
   Hcols <- c(paste0("RP",f), 'AGE', 'SEX', 'DATE', 'YEAR', 'BANDB', 'WEBTAGB', 'COMMENTS')
   HS[Hcols] <- NA
  
+  HS$BAND[which(HS$BAND == "")] <- NA
   #Takes a Hot Second: Do something different?
-  #*** For some reason this is turning webtag class into logical, maybe because I assign it to NA first?'
-  #   It is that do as.character(NA)
   for(i in 1:nrow(HS)){
     #RP
     if(!is.na(HS[[paste0("dumpr",f)]][i]) & !is.na(HS[[paste0("PR",f)]][i])){HS[[paste0("RP",f)]][i] <- HS[[paste0("PR",f)]][i]}else{
@@ -1203,7 +1212,10 @@ for(f in years){
     LL <- LL %>% mutate_all(as.character)
   }
   
-  LM <- LL
+  if(f == "86"){LM <- LL}else{
+    LM <- bind_rows(LL, AC)
+  }
+ 
   
   NA_ <- HG[,c("METAL", "WEBTAG", "AGEB", "YEARB")] #need a name convention change here b/c it'd just be NA 
   
@@ -1249,7 +1261,10 @@ for(f in years){
   #Sas COMMENTS: each row must have the NH column filled in
   ###
   
-  NI <- bind_rows(NC, ND) #non '86 binds more things together
+  if(f == "86"){NI <- bind_rows(NC, ND)}else{
+    NI <- bind_rows(NC, ND, NG, NH)
+  }
+  
   if(nrow(NI) != 0){
     NI$NEST[which(NI$NEST == "")] <- "noinfo" 
   }
@@ -1297,7 +1312,45 @@ for(f in years){
     NL <- NL[-which(!is.na(NL$BBLYEAR) & NL$BBLYEAR < 1967),] #diff from '86
     ERRORS <- bind_rows(BW, BX, DB, DV, FT, HB, HV, JJ, NK) #diff from '86
   }else{
-    #Diff from 86
+    
+    if(f < 50){next_yr <- paste0("20", (as.numeric(f)+1) )}else{next_yr <- paste0("19",(as.numeric(f)+1) )}
+    
+    if(f > "87"){
+      SPRINGA <- SPRINGMST15[which(SPRINGMST15$YEAR == next_yr),] %>% 
+                       rename(REALBAND = BAND, !!paste0("SM", (as.numeric(f)+1)) := MONTH, !!paste0("SD", (as.numeric(f)+1)) := DAY)
+      SPRINGA[[paste0("SL", (as.numeric(f)+1))]] <- "SOG"
+      SPRINGA  <- SPRINGA[,c("REALBAND", paste0("SL", (as.numeric(f)+1)), paste0("SM", (as.numeric(f)+1)), paste0("SD", (as.numeric(f)+1)), "MATE")]
+      
+      SPRINGB <- SPRINGA %>% rename(BAND = MATE)
+      SPRINGB <- SPRINGB[!(SPRINGB$BAND == "" | SPRINGB$BAND == "UM" | SPRINGB$BAND == "NO"),] #Check operators 
+      
+      SPRINGC <- left_join(SPRINGB, NL) 
+      SPRINGC <- SPRINGC[!(SPRINGC$REALBAND == ""),] %>% rename(!!paste0("SMATEM", (as.numeric(f)+1)) := METAL, 
+                                                                !!paste0("SMATEP", (as.numeric(f)+1)) := BAND)
+      SPRINGC <- SPRINGC[,c("REALBAND", paste0("SL", (as.numeric(f)+1)), paste0("SM", (as.numeric(f)+1)), paste0("SD", (as.numeric(f)+1)), 
+                         paste0("SMATEM", (as.numeric(f)+1)), paste0("SMATEP", (as.numeric(f)+1)))]
+      
+      SPRINGD <- SPRINGC %>% rename(BAND = REALBAND)
+      
+      SPRINGE <- SPRINGMST15[which(SPRINGMST15$YEAR == next_yr),]
+      SPRINGE <- SPRINGE[which(SPRINGE$MATE == "" | SPRINGE$MATE == "UM" | SPRINGE$MATE == "NO"),] %>% 
+                          rename(!!paste0("SM", (as.numeric(f)+1)) := MONTH, !!paste0("SD", (as.numeric(f)+1)) := DAY, 
+                                 !!paste0("SMATEP", (as.numeric(f)+1)) := MATE)
+      SPRINGE[[paste0("SL", (as.numeric(f)+1))]] <- "SOG"
+      SPRINGE[[paste0("SMATEM", (as.numeric(f)+1))]] <- ""
+      SPRINGE <- SPRINGE[,c("BAND", paste0("SD", (as.numeric(f)+1)), paste0("SM", (as.numeric(f)+1)), paste0("SL", (as.numeric(f)+1)), 
+                            paste0("SMATEP", (as.numeric(f)+1)), paste0("SMATEM", (as.numeric(f)+1)))]
+      
+      SPRINGF <- bind_rows(SPRINGD, SPRINGE)
+    }
+    
+    if(f %in% winteryrs){
+      WINTER <- WINTERMST16[which(WINTERMST16$YEAR == next_yr),] %>% 
+                  rename(!!paste0("WL", (as.numeric(f)+1)) := LOCATION, !!paste0("WM", (as.numeric(f)+1)) := MONTH,
+                         !!paste0("WD", (as.numeric(f)+1)) := DAY)
+      WINTER[,c(paste0("WL", (as.numeric(f)+1)), paste0("WM", (as.numeric(f)+1)), paste0("WD", (as.numeric(f)+1)), "BAND")]
+    }
+    
     TOWA <- TOWER[which(grepl(paste0("*", f), TOWER$YEAR)),] %>% rename(REALBAND = BAND)
     
     TOWB <- TOWA %>% rename(BAND = MATE)
@@ -1323,7 +1376,7 @@ for(f in years){
     TOWG <- TOWG %>% rename(BAND = REALBAND)
     
     #Figures out the full year
-    if(f < 50){full_year <- paste0("20",f)}else(full_year <- paste0("19",f))
+    if(f < 50){full_year <- paste0("20",f)}else{full_year <- paste0("19",f)}
     
     TOWH <- TOWER[which(TOWER$YEAR == full_year & (is.na(TOWER$MATE) | TOWER$MATE == "UM" | TOWER$MATE == "NO")), !names(TOWER) %in% "YEAR"]
     TOWH <- TOWH %>% rename(!!paste0("DTO",f) := DATE, !!paste0("TMATEP",f) := MATE, !!paste0("TBS",f) := BRSIZE)
@@ -1392,6 +1445,12 @@ for(f in years){
     NBRM <- NBRM[!(NBRM$COUNT > 1), !names(NBRM) %in% "COUNT"]
     
     NN <- full_join(NL, TOWM) %>% full_join(., NBRM)
+    if(f > "87"){
+      NN <- full_join(NN, SPRINGF)
+      if(f %in% winteryrs){
+        NN <- full_join(WINTER)
+      }
+    }
     NN <- NN[!(is.na(NN$METAL)),]
     
     OA <- NN[!(is.na(NN[[paste0("MATEM",f)]]) & is.na(NN[[paste0("NBMATEM",f)]]) & is.na(NN[[paste0("TMATEM",f)]]) & 
@@ -1434,7 +1493,27 @@ for(f in years){
     OE$COMMENTS[is.na(OE$METAL)] <- "Bird seen tower, no banding record"
     OE <- OE[!is.na(OE$COMMENTS),c("BAND", "SEXB", "COMMENTS", paste0("DTO",f), paste0("TMATEM",f), paste0("TMATEP",f), paste0("TBS",f))]
     
-    ERRORS <- bind_rows(ERRORS, BW, BX, DV, FT, HB, HB, JJ, NK, OA, OB, OC, OD, OE)
+    if(f > 88){
+      OF <- full_join(NL, SPRINGF) #****Fuck it's suppose to be NL of the year before :( 
+      OF <- OF[which(is.na(OF$METAL)),] 
+      OF$COMMENTS <- "Bird seen spring, no banding record"
+    }
+    
+    if(){
+      OG <- full_join(NL, WINTER) #****It's suppose to be NL of last year, think about that
+      OG <- OG[which(is.na(OG$METAL)),]
+      OG$COMMENTS <- "Bird seen winter, no banding records"
+    }
+    
+    
+    if(f < 89){
+      ERRORS <- bind_rows(ERRORS, BW, BX, DV, FT, HB, HB, JJ, NK, OA, OB, OC, OD, OE)
+    }else if(f %in% winteryrs)
+      ERRORS <- bind_rows(ERRORS, BW, BX, DV, FT, HB, HB, JJ, NK, OA, OB, OC, OD, OE, OF, OG)
+    }else{
+      ERRORS <- bind_rows(ERRORS, BW, BX, DV, FT, HB, HB, JJ, NK, OA, OB, OC, OD, OE, OF)
+    }
+    
     
   }
   
