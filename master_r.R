@@ -438,7 +438,7 @@ if(length(which(BU86$COUNT > 1)) != 0){
   BW86 <-  BU86[BU86$COUNT > 1,]
   BW86$COMMENTS <-  "This metal was put on 2x"
   BW86$YEAR <- "86"
-  BW86 <- BX86[,!names(BX86) %in% "COUNT"]
+  BW86 <- BW86[,!names(BW86) %in% "COUNT"]
 }else{BW86 <- setNames(data.frame(matrix(ncol = 3, nrow = 0)), c("COMMENTS", "METAL", "YEAR"))}
 
 #Check if a plastic band appears more than once and create a dataframe to flag it
@@ -499,8 +499,6 @@ DD86 <- group_by(DC86, METAL) %>% summarise(meanNc86 = mean_(DC86, Nc86), meanNt
 DE86 <- merge(DA86, DD86, by = c("METAL", "DATE"))
 DE86 <- DE86[(!is.na(DE86$COUNTsum)), !names(DE86) %in% c("Nc86", "Nt86")]
 
-
-#DF86 <- group_by(DE86, METAL) %>% slice(sum(COUNT))
 DF86 <- DE86 %>% group_by(METAL) %>% mutate(COUNT = sum(COUNTsum)) # %>% summarise_all(~last(.[which(!is.na(.) & (. != ""))]))
 CheckReplicates <- Mistakes(DF86, groupby="METAL", yeardf = BA86 ,CheckReplicates)
 DF86 <- DF86[!(DF86$COUNT > 1),!names(DF86) %in% c("n86", "COUNTsum")] 
@@ -1542,7 +1540,7 @@ if(length(which(BU87$COUNT > 1)) != 0){
   BW87 <-  BU87[(BU87$COUNT > 1),]
   BW87$COMMENTS <-  "This metal was put on 2x"
   BW87$YEAR <- "87"
-  BW87 <- BX87[,!names(BX87) %in% "COUNT"]
+  BW87 <- BW87[,!names(BW87) %in% "COUNT"]
 }else{BW87 <- setNames(data.frame(matrix(ncol = 3, nrow = 0)), c("COMMENTS", "METAL", "YEAR"))}
 
 #Check if a plastic band appears more than once and create a dataframe to flag it
@@ -2266,7 +2264,7 @@ if(nrow(LL87) !=0){LL87$YEAR <- "87"}else{
   LL87 <- LL87 %>% mutate_all(as.character)
 }
 
-LM87 <- bind_rows(LL87, AC8)
+LM87 <- bind_rows(LL87, AC87)
 
 NA87 <- HG87[,c("METAL", "WEBTAG", "AGEB", "YEARB")]
 
