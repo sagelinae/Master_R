@@ -184,7 +184,7 @@ addToEnv <- function(list, regex){
 
 lists <- c('BSC','EGG','NEST','RECAP') #List of the type of files will be pulling from
 #years <- c(86:99, sprintf("%02d", c(00:15))) #Vector of the different years we'll be looping through
-years <- c("86", "87", "88")
+years <- c("86", "87", "88" )
 
 #This a tad confusing, so we work with winter years the year before. So for example when coding for year 90 
 #we have code for WINTER91; so winter_yrs are the years that will correlate w/ f for where we should run 
@@ -826,17 +826,17 @@ for(f in years){
   if(nrow(FP) != 0){
     FP[[paste0("MATEM",f)]]<- FP$METAL
     FP[[paste0("MATEP",f)]] <- FP[[paste0("mateband",f)]]
-    if(f != "86"){FP[[paste0("NMSEX",f)]] <- FP$SEXB}
+    FP[[paste0("NMSEX",f)]] <- FP$SEXB
     
     FP <- FP[,c(paste0("MATEM",f), 'NEST', paste0("MATEP",f), paste0("n",f), paste0("CS",f), paste0("ID",f), 
-                paste0("HD",f), 'REALBAND', if(f == "87" | f == "88"){paste0("NMSEX",f)})]
+                paste0("HD",f), 'REALBAND', paste0("NMSEX",f))]
   }else{
     FP <- setNames(data.frame(matrix(ncol = 8, nrow = 0)), c(paste0("MATEM",f), 'NEST', paste0("MATEP",f), paste0("n",f), 
                                                              paste0("CS",f), paste0("ID",f), paste0("HD",f), 'REALBAND'))
     FP <- FP %>% mutate_all(as.character)
   }
 
-  FQ <- FP[,c("REALBAND", paste0("MATEM",f), paste0("MATEP",f), if(f == "87" | f == "88"){paste0("NMSEX",f)})]
+  FQ <- FP[,c("REALBAND", paste0("MATEM",f), paste0("MATEP",f), if(f != "86"){paste0("NMSEX",f)})]
   FQ <- FQ %>% rename(BAND = REALBAND)
   
   FR <- full_join(FQ, FM)
@@ -919,7 +919,7 @@ for(f in years){
   HL <- full_join(FS, HK)
   if("Y" %in% HL$DEL){
     HL <- HL[-which(HL$DEL == "Y"),]
-  }#Think about how to do this if there's no instances of "y"; -which() gives us an empty df, but this seems to fuck things up too
+  }
   HL$duma <- "1"
   
   HM <- full_join(HG, HK) #Might be missing things compared to SAS since I took out duplicates in HG - HF?
@@ -1486,8 +1486,10 @@ for(f in years){
     
     OB <- NN[!(is.na(NN[[paste0("NMSEX",f)]]) & is.na(NN[[paste0("TMSEX",f)]]) & is.na(NN[[paste0("NBMSEX",f)]])),]
     OB$COMMENTS <- as.character(NA)
-    OB$COMMENTS[(OB[[paste0("NMSEX",f)]] == OB$SEXB) | (OB[[paste0("TMSEX",f)]] == OB$SEXB)| 
-                    (OB[[paste0("NBMSEX",f)]] == OB$SEXB)] <- "Same sex pair" #hell yeah gay bird rights
+    OB$COMMENTS[which((OB[[paste0("NMSEX",f)]] == OB$SEXB) | (OB[[paste0("TMSEX",f)]] == OB$SEXB)| 
+                    (OB[[paste0("NBMSEX",f)]] == OB$SEXB) | (is.na(OB$SEXB) & is.na(OB[[paste0("NMSEX",f)]])) | 
+                     (is.na(OB$SEXB) & is.na(OB[[paste0("NBMSEX",f)]])) |
+                     (is.na(OB$SEXB) & is.na(OB[[paste0("TMSEX",f)]])))] <- "Same sex pair" #hell yeah gay bird rights
     keep <- c("METAL", "BAND", "SEXB", paste0("MATEM",f), paste0("MATEP",f), paste0("NBD",f), paste0("NBMATEM",f), paste0("NBMATEP",f), 
               paste0("NBMSEX",f), paste0("DTO",f), paste0("TMATEM",f), paste0("TMATEP",f), paste0("TBS",f), paste0("TMSEX",f), "COMMENTS")
     OB <- OB[!is.na(OB$COMMENTS), keep]
@@ -1497,7 +1499,6 @@ for(f in years){
     
     OC <- NN
     OC$COMMENTS <- as.character(NA)
-    #It's not always '86, it's just the year before
     OC$COMMENTS[((OC$BBLAGE == "L" & OC$BBLYEAR == prev_yr & !is.na(OC[[paste0("n",f)]]))|
                      (OC$BBLAGE == "L" & OC$BBLYEAR == prev_yr & OC[[paste0("TBS",f)]] > 0))] <- "Breeding SY bird"
     OC <- OC[!is.na(OC$COMMENTS), keep] #Columns saved are the same as keep above so not changing it
@@ -1512,7 +1513,7 @@ for(f in years){
     OE$COMMENTS[is.na(OE$METAL)] <- "Bird seen tower, no banding record"
     OE <- OE[!is.na(OE$COMMENTS),c("BAND", "SEXB", "COMMENTS", paste0("DTO",f), paste0("TMATEM",f), paste0("TMATEP",f), paste0("TBS",f))]
     
-    if(f > 88 & f < 85){
+    if(f > 88 | f < 85){
       OF <- full_join(prev_NL, SPRINGF) #****Fuck it's suppose to be NL of the year before :(
       OF <- OF[which(is.na(OF$METAL)),]
       OF$COMMENTS <- "Bird seen spring, no banding record"
