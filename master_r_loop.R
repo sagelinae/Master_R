@@ -426,7 +426,7 @@ for(f in years){
             BS <- bind_rows(BS, BC[i,]) 
             z <- last(which(BC$METAL[i] == BS$METAL))
             BS$LBAND[z] <- NA#""
-            BS[[paste0("PR",f)]][z] <- NA #"    " idk if this will fuck anything else up we'll see I guessssss
+            BS[[paste0("PR",f)]][z] <- NA 
             BS$LMETAL[z] <- BC$NEWMETAL[i]
             BS[[paste0("mr",f)]][z] <- "12345"
             next
@@ -506,14 +506,14 @@ for(f in years){
   #This is for when there are instances of one metal occuring more than once, when that happens we take the mean
   #of Nc(cul) and Nt(tar) of the different instances, the min of the dates that occur, and we sum up how many times
   #it happened more than once with count.
-  
+  DD <- DC %>% group_by(METAL) %>% mutate(COUNT = sum(COUNT))
+  CheckReplicates <- Mistakes(DD, groupby = "METAL", yeardf = BA, CheckReplicates)
   DD <- group_by(DC, METAL) %>% summarise(!!paste0("meanNc",f) := mean_(DC, !!as.name(paste0("Nc", f))), 
                                           !!paste0("meanNt",f) := mean_(DC, !!as.name(paste0("Nt", f))), 
                                           DATE = min(DATE), COUNTsum = sum(COUNT)) 
   #This one I think is ok to have replicates and to use summarise to combine. Because it includes Recap and BS data
   #   which we combined in BS, so we might have duplicate metals because of that and taking the mean between 
-  #   them makes sense I think. 
-  #CheckReplicates <- Mistakes(DD, CheckReplicates)
+  #   them makes sense I think ???????????
   
   DE <- merge(DA, DD, by = c("METAL", "DATE"))
   DE <- DE[(!is.na(DE$COUNTsum)), !names(DE) %in% c(paste0("Nc", f), paste0("Nt", f))]
@@ -744,7 +744,7 @@ for(f in years){
     FB <- FB %>% mutate_all(as.character)
   }
   
-  FC <- full_join(FA, FB) #***hmm why do I do full join here and not set??
+  FC <- bind_rows(FA, FB) 
   if(nrow(FC != 0)){
     for(i in 1:nrow(FC)){
       if(!is.na(FC$feband[i])){FC$BAND[i] <- FC$feband[i]}
@@ -756,7 +756,7 @@ for(f in years){
   FD <- FC
   FD$COUNT <- 1
   
-  FE <- group_by(FD, BAND) %>% mutate(COUNT = sum(COUNT)) #I don't remember why I included .drop = false here lol
+  FE <- group_by(FD, BAND) %>% mutate(COUNT = sum(COUNT)) 
   CheckReplicates <- Mistakes(x = FE, groupby = "BAND", yeardf = BA,CheckReplicates)
   #This will be off for years where there are duplicates, since I'm not condensing anything we will have more
   
@@ -779,8 +779,9 @@ for(f in years){
     FI <- setNames(data.frame(matrix(ncol = (length(colnames(FI)) + 1), nrow = 0)), c(colnames(FI), "dud"))
   }
   
+  FJ <- FI %>% group_by(BAND) %>% mutate(COUNT = sum(COUNT))
+  CheckReplicates <- Mistakes(x = FJ, groupby = "BAND", yeardf = BA,CheckReplicates) 
   FJ <- group_by(FI, BAND) %>% summarise(dud = sum(COUNT))
-  #CheckReplicates <- Mistakes(x = FJ86, groupby = BAND, yeardf = BA86,CheckReplicates) #I think this is caught above w/ FE
   
   FK <- FJ[,"BAND"]
   if(nrow(FK) != 0){
@@ -888,9 +889,11 @@ for(f in years){
   HC <- HA[(HA$METAL != "" & !is.na(HA$METAL)),] 
   HC[[paste0("Bc",f)]] <- as.numeric(HC[[paste0("Bc",f)]])
   HC[[paste0("Bt",f)]] <- as.numeric(HC[[paste0("Bt",f)]])
-  #Def flag here too
-  #Don't take it out, doesn't matter if mistakes get through since it will get fixed and won't be a problem 
-  #   next time you run it
+  
+  #I don't think we should do one here there's a lot of birds that I think aren't mistakes?? 
+  #And it'd make CheckReplicates worthless with how many things it flags
+  #HD <- HC %>% group_by(METAL) %>% mutate(COUNT = sum(COUNT))
+  #CheckReplicates <- Mistakes(HD, groupby = "METAL", yeardf = BA, CheckReplicates)
   HD <- group_by(HC, METAL) %>% summarise(!!paste0("meanbc",f) := mean_(HC, !!as.name(paste0("Bc",f))), 
                                             !!paste0("meanbt",f) := mean_(HC, !!as.name(paste0("Bt",f))),
                                               DATE = min(DATE), COUNTsum = sum(COUNT))
@@ -1099,10 +1102,12 @@ for(f in years){
   
   JC <- JC %>% mutate_at(vars(D, L, W, COUNT), as.numeric)
   
+  #*** Not sure if my function can handle multiple inputs for grouby??
+  #This one is weird so I'm ignoring it for now
+  #JD <- JC %>% group_by(WEBTAG, NEST, EGG) %>% mutate(COUNT = sum(COUNT))
+  #CheckReplicates <- Mistakes(JD, groupby = "WEBTAG", yeardf = BA, CheckReplicates)
   JD <- JC %>% group_by(WEBTAG, NEST, EGG) %>% summarise(MD = mean_(JC, D), ML = mean_(JC, L), 
                                                              MW = mean_(JC,W), C = sum(COUNT))
-  #***Come back to once you do JD87 to decide if you need to add a Mistakes()
-  #It didn't illuminate anything so not sure if I need it yet
   
   JE <- JD
   JE <- JE %>% rename(WTD = MD, EGG1 = ML, EGGW = MW)
@@ -1161,9 +1166,10 @@ for(f in years){
   LA <- FM
   LA$dum <- 1
   
+  LB <- LA %>% group_by(NEST) %>% mutate(COUNT = sum(dum))
+  CheckReplicates <- Mistakes(x = LB, groupby = "NEST", yeardf = BA, CheckReplicates)
   LB <- group_by(LA, NEST) %>% summarise(dum = sum(dum))
-  #***Think about this one, can't just name it Count, maybe take multiple col names? Another input lmao?
-  #CheckReplicates <- Mistakes(x = LB86, groupby = "NEST", yeardf = BA86, CheckReplicates)
+  
   LC <- get(paste0("NEST", f))
   
   LD <- full_join(LC, LB)
@@ -1321,6 +1327,7 @@ for(f in years){
   NL <- NJ[,!names(NJ) %in% c("COMMENTS", paste0("EGGL",f), paste0("EGGW",f), paste0("NHID",f), paste0("STATE",f), 
                               paste0("PILS",f), paste0("TAGD",f), paste0("PARENT1M",f), paste0("PARENT2M",f),
                               paste0("PARENT1P",f), paste0("PARENT2P",f))]
+  
   if(f == "86"){
     NL <- NL[-which(!is.na(NL$BBLYEAR) & NL$BBLYEAR < 1967),] #diff from '86
     ERRORS <- bind_rows(BW, BX, DB, DV, FT, HB, HV, JJ, NK) #diff from '86
@@ -1329,34 +1336,37 @@ for(f in years){
     #Finds the full format of the next year
     if(f < 50){next_yr <- paste0("20", (as.numeric(f)+1) )}else{next_yr <- paste0("19",(as.numeric(f)+1) )}
     
-    if(f > "87"){
-      SPRINGA <- SPRINGMST15[which(SPRINGMST15$YEAR == next_yr),] %>% 
-                       rename(REALBAND = BAND, !!paste0("SM", (as.numeric(f)+1)) := MONTH, !!paste0("SD", (as.numeric(f)+1)) := DAY)
-      SPRINGA[[paste0("SL", (as.numeric(f)+1))]] <- "SOG"
-      SPRINGA  <- SPRINGA[,c("REALBAND", paste0("SL", (as.numeric(f)+1)), paste0("SM", (as.numeric(f)+1)), paste0("SD", (as.numeric(f)+1)), "MATE")]
+    #if(f > "87"){
+      if(any(grepl(next_yr,SPRINGMST15$YEAR))){ #Will only run if there is data in the SPRING file for the year in the future. I think it makes the above if obsolete? 
+        SPRINGA <- SPRINGMST15[which(SPRINGMST15$YEAR == next_yr),] %>% 
+          rename(REALBAND = BAND, !!paste0("SM", (as.numeric(f)+1)) := MONTH, !!paste0("SD", (as.numeric(f)+1)) := DAY)
+        SPRINGA[[paste0("SL", (as.numeric(f)+1))]] <- "SOG"
+        SPRINGA  <- SPRINGA[,c("REALBAND", paste0("SL", (as.numeric(f)+1)), paste0("SM", (as.numeric(f)+1)), paste0("SD", (as.numeric(f)+1)), "MATE")]
+        
+        SPRINGB <- SPRINGA %>% rename(BAND = MATE)
+        SPRINGB <- SPRINGB[!(SPRINGB$BAND == "" | SPRINGB$BAND == "UM" | SPRINGB$BAND == "NO"),] #Check operators 
+        
+        SPRINGC <- left_join(SPRINGB, NL) 
+        SPRINGC <- SPRINGC[!(SPRINGC$REALBAND == ""),] %>% rename(!!paste0("SMATEM", (as.numeric(f)+1)) := METAL, 
+                                                                  !!paste0("SMATEP", (as.numeric(f)+1)) := BAND)
+        SPRINGC <- SPRINGC[,c("REALBAND", paste0("SL", (as.numeric(f)+1)), paste0("SM", (as.numeric(f)+1)), paste0("SD", (as.numeric(f)+1)), 
+                              paste0("SMATEM", (as.numeric(f)+1)), paste0("SMATEP", (as.numeric(f)+1)))]
+        
+        SPRINGD <- SPRINGC %>% rename(BAND = REALBAND)
+        
+        SPRINGE <- SPRINGMST15[which(SPRINGMST15$YEAR == next_yr),]
+        SPRINGE <- SPRINGE[which(SPRINGE$MATE == "" | SPRINGE$MATE == "UM" | SPRINGE$MATE == "NO"),] %>% 
+          rename(!!paste0("SM", (as.numeric(f)+1)) := MONTH, !!paste0("SD", (as.numeric(f)+1)) := DAY, 
+                 !!paste0("SMATEP", (as.numeric(f)+1)) := MATE)
+        SPRINGE[[paste0("SL", (as.numeric(f)+1))]] <- "SOG"
+        SPRINGE[[paste0("SMATEM", (as.numeric(f)+1))]] <- ""
+        SPRINGE <- SPRINGE[,c("BAND", paste0("SD", (as.numeric(f)+1)), paste0("SM", (as.numeric(f)+1)), paste0("SL", (as.numeric(f)+1)), 
+                              paste0("SMATEP", (as.numeric(f)+1)), paste0("SMATEM", (as.numeric(f)+1)))]
+        
+        SPRINGF <- bind_rows(SPRINGD, SPRINGE)
+      }
       
-      SPRINGB <- SPRINGA %>% rename(BAND = MATE)
-      SPRINGB <- SPRINGB[!(SPRINGB$BAND == "" | SPRINGB$BAND == "UM" | SPRINGB$BAND == "NO"),] #Check operators 
-      
-      SPRINGC <- left_join(SPRINGB, NL) 
-      SPRINGC <- SPRINGC[!(SPRINGC$REALBAND == ""),] %>% rename(!!paste0("SMATEM", (as.numeric(f)+1)) := METAL, 
-                                                                !!paste0("SMATEP", (as.numeric(f)+1)) := BAND)
-      SPRINGC <- SPRINGC[,c("REALBAND", paste0("SL", (as.numeric(f)+1)), paste0("SM", (as.numeric(f)+1)), paste0("SD", (as.numeric(f)+1)), 
-                         paste0("SMATEM", (as.numeric(f)+1)), paste0("SMATEP", (as.numeric(f)+1)))]
-      
-      SPRINGD <- SPRINGC %>% rename(BAND = REALBAND)
-      
-      SPRINGE <- SPRINGMST15[which(SPRINGMST15$YEAR == next_yr),]
-      SPRINGE <- SPRINGE[which(SPRINGE$MATE == "" | SPRINGE$MATE == "UM" | SPRINGE$MATE == "NO"),] %>% 
-                          rename(!!paste0("SM", (as.numeric(f)+1)) := MONTH, !!paste0("SD", (as.numeric(f)+1)) := DAY, 
-                                 !!paste0("SMATEP", (as.numeric(f)+1)) := MATE)
-      SPRINGE[[paste0("SL", (as.numeric(f)+1))]] <- "SOG"
-      SPRINGE[[paste0("SMATEM", (as.numeric(f)+1))]] <- ""
-      SPRINGE <- SPRINGE[,c("BAND", paste0("SD", (as.numeric(f)+1)), paste0("SM", (as.numeric(f)+1)), paste0("SL", (as.numeric(f)+1)), 
-                            paste0("SMATEP", (as.numeric(f)+1)), paste0("SMATEM", (as.numeric(f)+1)))]
-      
-      SPRINGF <- bind_rows(SPRINGD, SPRINGE)
-    }
+    #}
     
     WINTER <- WINTERMST16 #***This is done so OG doesn't throw an error in years where the below code won't run? I think it's fine
     if(f %in% winter_yrs){
