@@ -96,7 +96,12 @@ names(EGG) <- paste0("EGG", substr(c("1986":"2017"), 3,4))
 
 
 #Import Manipulation nest files
-#*********Look at converting to a csv again. It only did the first sheet.
+ManipTemp <- "X:\\brant_data\\brant data\\manipnest\\"
+Manipfilenames <- grep(list.files(path= ManipTemp, pattern = ".csv", full.names = TRUE), 
+                       pattern='Egg', inv=T, value=T)
+MANIP <- lapply(Manipfilenames, read.csv, colClasses = "character")
+names(MANIP) <- paste0("MNEST", substr(c("2004", "2008":"2014"), 3,4))
+
 
 #Import spring/winter resights, tower data, and band reads not associated with nest/broods
 SPRINGMST15 <- read.csv("X:\\brant_data\\brant data\\Spring resights_csv\\SPRINGMST2015.csv", colClasses = "character")
@@ -182,7 +187,7 @@ addToEnv <- function(list, regex){
 
 
 
-lists <- c('BSC','EGG','NEST','RECAP') #List of the type of files will be pulling from
+lists <- c('BSC','EGG','NEST','RECAP', 'MANIP') #List of the type of files will be pulling from
 #years <- c(86:99, sprintf("%02d", c(00:15))) #Vector of the different years we'll be looping through
 years <- c("86", "87", "88" )
 
@@ -264,14 +269,14 @@ for(f in years){
             BS[[paste0("mr",f)]][z] <- BC$METAL[i]
             next
             #IF NEWMETAL == "." 
-          }else if( is.na(BC$NEWMETAL[i]) ){ #Changing "." to is.na
+          }else if( is.na(BC$NEWMETAL[i]) ){ 
             #equivalent to BE
             BS <- bind_rows(BS, BC[i,])
             z <- last(which(BC$METAL[i] == BS$METAL))
             BS$LBAND[z] <- BC$NEWPLASTIC[i]
             BS[[paste0("PR",f)]][z] <- as.character(BC$BAND[i]) 
             BS$LMETAL[z] <- BC$METAL[i]
-            BS[[paste0("mr",f)]][z] <- NA #changing "." to NA
+            BS[[paste0("mr",f)]][z] <- NA 
             next
           }#IF NEWPLASTIC == ""
         }else if( is.na(BC$NEWPLASTIC[i]) ){
@@ -281,19 +286,19 @@ for(f in years){
             BS <- bind_rows(BS, BC[i,]) 
             z <- last(which(BC$METAL[i] == BS$METAL))
             BS$LBAND[z] <- BC$BAND[i]
-            BS[[paste0("PR",f)]][z] <- NA#"    " 
+            BS[[paste0("PR",f)]][z] <- NA
             BS$LMETAL[z] <- BC$NEWMETAL[i]
             BS[[paste0("mr",f)]][z] <- BC$METAL[i]
             next
             #IF NEWMETAL == "."
-          }else if( is.na(BC$NEWMETAL[i]) ){ #Changing from "." to is.na
+          }else if( is.na(BC$NEWMETAL[i]) ){ 
             #equivalent to BG
             BS <- bind_rows(BS, BC[i,])
             z <- last(which(BC$METAL[i] == BS$METAL))
             BS$LBAND[z] <- BC$BAND[i]
-            BS[[paste0("PR",f)]][z] <- NA#"    " 
+            BS[[paste0("PR",f)]][z] <- NA
             BS$LMETAL[z] <- BC$METAL[i]
-            BS[[paste0("mr",f)]][z] <- NA #changing "." to NA
+            BS[[paste0("mr",f)]][z] <- NA 
             next
           }
         }#If BAND == ""
@@ -311,14 +316,14 @@ for(f in years){
             BS[[paste0("mr",f)]][z] <- BC$METAL[i]
             next
             #IF NEWMETAL == "."
-          }else if( is.na(BC$NEWMETAL[i]) ){ #Changing == "." to is.na
+          }else if( is.na(BC$NEWMETAL[i]) ){ 
             #equivalent to BI
             BS <- bind_rows(BS, BC[i,]) 
             z <- last(which(BC$METAL[i] == BS$METAL))
             BS$LBAND[z] <- BC$NEWPLASTIC[i]
             BS[[paste0("PR",f)]][z] <- "PBA "
             BS$LMETAL[z] <- BC$METAL[i]
-            BS[[paste0("mr",f)]][z] <- NA #"."
+            BS[[paste0("mr",f)]][z] <- NA 
             next
           }#IF NEWPLASTIC == ""
         }else if( is.na(BC$NEWPLASTIC[i]) ){
@@ -328,26 +333,25 @@ for(f in years){
             BS <- bind_rows(BS, BC[i,]) 
             z <- last(which(BC$METAL[i] == BS$METAL))
             BS$LBAND[z] <- NA#""
-            BS[[paste0("PR",f)]][z] <- NA#"    "
+            BS[[paste0("PR",f)]][z] <- NA
             BS$LMETAL[z] <- BC$NEWMETAL[i]
             BS[[paste0("mr",f)]][z] <- BC$METAL[i]
             next
             #IF NEWMETAL == "."
-          }else if( is.na(BC$NEWMETAL[i]) ){ #Changing from "."
+          }else if( is.na(BC$NEWMETAL[i]) ){ 
             #equivalent to BK
             BS <- bind_rows(BS, BC[i,]) 
             z <- last(which(BC$METAL[i] == BS$METAL))
             BS$LBAND[z] <- NA#""
-            BS[[paste0("PR",f)]][z] <- NA#"    "
+            BS[[paste0("PR",f)]][z] <- NA
             BS$LMETAL[z] <- BC$METAL[i]
-            BS[[paste0("mr",f)]][z] <- NA #"."
+            BS[[paste0("mr",f)]][z] <- NA 
             next
           }
         }
       }
       #If METAL == "." 
-    }else if(BC$METAL[i] == "" | is.na(BC$METAL[i]) ){ #*********Changing "." to ""; maybe needs to be NA? Can't find what it'd actually be in data so far, but I think it's just empty
-      #If BAND != ""
+    }else if(BC$METAL[i] == "" | is.na(BC$METAL[i]) ){ 
       if(BC$BAND[i] != "" & !is.na(BC$BAND[i])){
         #IF NEWPLASTIC != ""
         if( !is.na(BC$NEWPLASTIC[i]) ){
@@ -362,14 +366,14 @@ for(f in years){
             BS[[paste0("mr",f)]][z] <- "12345"
             next
             #IF NEWMETAL == "."
-          }else if( is.na(BC$NEWMETAL[i]) ){ #Changing from "." to is.na
+          }else if( is.na(BC$NEWMETAL[i]) ){ 
             #equivalent to BM
             BS <- bind_rows(BS, BC[i,]) 
             z <- last(which(BC$METAL[i] == BS$METAL))
             BS$LBAND[z] <- BC$NEWPLASTIC[i]
             BS[[paste0("PR",f)]][z] <- as.character(BC$BAND[i]) 
             BS$LMETAL[z] <- NA#"."
-            BS[[paste0("mr",f)]][z] <- NA #"."
+            BS[[paste0("mr",f)]][z] <- NA 
             next
           }#IF NEWPLASTIC == ""
         }else if( is.na(BC$NEWPLASTIC[i]) ){
@@ -379,7 +383,7 @@ for(f in years){
             BS <- bind_rows(BS, BC[i,]) 
             z <- last(which(BC$METAL[i] == BS$METAL))
             BS$LBAND[z] <- BC$BAND[i]
-            BS[[paste0("PR",f)]][z] <- NA #"    "
+            BS[[paste0("PR",f)]][z] <- NA 
             BS$LMETAL[z] <- BC$NEWMETAL[i]
             BS[[paste0("mr",f)]][z] <- "12345"
             next
@@ -389,9 +393,9 @@ for(f in years){
             BS <- bind_rows(BS, BC[i,]) 
             z <- last(which(BC$METAL[i] == BS$METAL))
             BS$LBAND[z] <- BC$BAND[i]
-            BS[[paste0("PR",f)]][z] <- NA #"    "
+            BS[[paste0("PR",f)]][z] <- NA 
             BS$LMETAL[z] <- NA #"."
-            BS[[paste0("mr",f)]][z] <- NA #"."
+            BS[[paste0("mr",f)]][z] <- NA 
             next
           }
         }#If BAND == ""
@@ -409,14 +413,14 @@ for(f in years){
             BS[[paste0("mr",f)]][z] <- "12345"
             next
             #IF NEWMETAL == "."
-          }else if(is.na(BC$NEWMETAL[i]) ){ #Changing from "." to is.na
+          }else if(is.na(BC$NEWMETAL[i]) ){ 
             #equivalent to BQ
             BS <- bind_rows(BS, BC[i,])
             z <- last(which(BC$METAL[i] == BS$METAL))
             BS$LBAND[z] <- BC$NEWPLASTIC[i]
             BS[[paste0("PR",f)]][z] <- "PBA "
-            BS$LMETAL[z] <- NA #"."
-            BS[[paste0("mr",f)]][z] <- NA #"."
+            BS$LMETAL[z] <- NA 
+            BS[[paste0("mr",f)]][z] <- NA 
             next
           }#IF NEWPLASTIC == ""
         }else if( is.na(BC$NEWPLASTIC[i]) ){
@@ -425,7 +429,7 @@ for(f in years){
             #equivalent to BR
             BS <- bind_rows(BS, BC[i,]) 
             z <- last(which(BC$METAL[i] == BS$METAL))
-            BS$LBAND[z] <- NA#""
+            BS$LBAND[z] <- NA
             BS[[paste0("PR",f)]][z] <- NA 
             BS$LMETAL[z] <- BC$NEWMETAL[i]
             BS[[paste0("mr",f)]][z] <- "12345"
@@ -439,6 +443,7 @@ for(f in years){
 
   BS[[paste0("BAND", f)]] <- as.character(BS$LBAND) #Suppose to have an 86 yr extension
   BS <- BS[, !names(BS) %in% c("BAND", "NEWPLASTIC", "LBAND", "LMETAL")] #Deletes the two columns that is specified in SAS
+  BS <- BS %>% mutate_if(is.logical,as.character)
   
   ###
   #Checking if a metal/plastic band occurs more than once and creating a df to flag it. 
@@ -805,14 +810,49 @@ for(f in years){
             paste0("O",f))
   FM <- FM[, keep]
   
-  #Manipulation years! 
-  # if(f %in% manip_yrs){
-  #   MNA <- FM
-  #   MNB <- get(paste0("MNEST",f))
-  #   MNC <- 
-  # }
+  #Manipulation years!
+  #***Check on year where BAND or MATEBAND_YR is empty, is it NA or space??
+  if(f %in% manip_yrs){
+    MNA <- FM
+    
+    MNB <- get(paste0("MNEST",f))
+    if(any(is.na(MNB$NEST) | MNB$NEST == "")){
+      MNB <- MNB[-which(MNB$NEST == "" | is.na(MNB$NEST)),] #Check operators here
+    }
+    
+    for(i in 1:nrow(MNB)){
+      if(MNB[[paste0("CM",f)]][i] != 0 & !is.na(MNB[[paste0("CM",f)]][i])){MNB[[paste0("CMP",f)]][i] <- 1}else{
+        MNB[[paste0("CMP",f)]][i] <- 0}
+      if(MNB[[paste0("BM",f)]][i] != 0 & !is.na(MNB[[paste0("BM",f)]][i])){MNB[[paste0("BMP",f)]][i] <- 1}else{
+        MNB[[paste0("BMP",f)]][i] <- 0}
+    }
+    
+    MNC <- full_join(MNA, MNB)
+    MNC <- MNC %>% mutate_at(c("E", paste0("CM",f), paste0("MCS",f), paste0("BM",f), "J", "K"), as.integer)
+    for(i in 1:nrow(MNC)){
+      if(MNC[[paste0("OCS",f)]][i] != ""){MNC[[paste0("CS",f,"A")]][i] <- MNC[[paste0("OCS",f)]][i]}else{
+        MNC[[paste0("CS",f,"A")]][i] <- MNC[[paste0("CS",f)]][i] }
+      if(MNC[[paste0("GLN",f)]][i] != ""){MNC[[paste0("GLN",f,"B")]][i] <- MNC[[paste0("GLN",f)]][i]}else{
+        MNC[[paste0("GLN",f,"B")]][i] <- MNC[[paste0("GLN",f, "A")]][i] }
+    }
+    MNC[[paste0("ECM",f)]] <- MNC[[paste0("CM",f)]] - MNC$E
+    MNC[[paste0("EMCS",f)]] <- MNC[[paste0("MCS",f)]] - MNC$E
+    MNC[[paste0("EBM",f)]] <- MNC[[paste0("BM",f)]] - (MNC$J + MNC$K)
+    keep <- c("BAND", paste0("N", f), paste0("MATEBAND", f), paste0("CS", f), paste0("CSC", f), paste0("LO", f),
+              paste0("ID", f), paste0("HD", f), paste0("HO", f), paste0("ECM", f), paste0("EMCS", f), 
+              paste0("EMB", f),paste0("E", f), paste0("F", f), paste0("DG", f), paste0("GLN", f), paste0("CMP", f), 
+              paste0("BMP", f), paste0("ABN", f), paste0("ABD", f), paste0("NL", f), paste0("O", f))
+    MNC <- MNC[,c("E", keep)]
+    
+    MND <- MNC 
+    MND[[paste0("CS",f)]] <- MND[[paste0("CS",f, "A")]]
+    MND[[paste0("GLN",f)]] <- MND[[paste0("GLN",f, "B")]]
+    MND <- MND[which(!is.na(MND$BAND) & !is.na(MND[[paste0("MATEBAND", f)]]))]
+    MND <- MND[, keep]
+  }
 
-  FO <- FM %>% rename(REALBAND = BAND)
+  if(f %in% manip_yrs){FO <- MND %>% rename(REALBAND = BAND)}else{
+  FO <- FM %>% rename(REALBAND = BAND)}
   FO$BAND <- FO[[paste0("mateband",f)]]
   FO <- FO[-which(FO$BAND == "UM" | FO$BAND == "" | is.na(FO$BAND)),]
   if(nrow(FO) != 0){FO$DUM <- "Y"}else{
@@ -901,12 +941,14 @@ for(f in years){
   HE <- full_join(HA, HD)
   HE <- HE[(!is.na(HE$COUNTsum)), !names(HE) %in% c(paste0("Bc",f), paste0("Bt",f))]
   
-  #This may be off from SAS since again I don't condense duplicates, instead I flag them into CheckReplicates
-  #  and get rid of them so we don't include it. 
+  #Again like w/ HD this includes a lot of duplicates that seem ok? Like they should be summarised instead?
+  #i'm gonna do that?
   HF <- HE[,!names(HE) %in% "COUNTsum"]
   HF <- HF %>% group_by(METAL) %>% mutate(COUNT = sum(COUNT)) 
   CheckReplicates <- Mistakes(HF, groupby = "METAL", yeardf = BA, CheckReplicates)
-  HF <- HF[!(HF$COUNT > 1),]
+  #HF <- HF[!(HF$COUNT > 1),]
+  HF <- HF %>% group_by(METAL) %>% mutate(COUNT = sum(COUNT)) %>%
+                                   summarise_all(~last(.[which(!is.na(.) & (. != "") )]))
   
   HG <- HF %>% rename(!!paste0("BC",f) := !!paste0("meanbc",f), !!paste0("BT",f) := !!paste0("meanbt",f))
   
@@ -949,7 +991,7 @@ for(f in years){
                       !!paste0("dbd",f) := coalesce(!!as.name(paste0("dbd",f, ".x")), !!as.name(paste0("dbd",f, ".y"))),
                       DEL = coalesce(DEL.x, DEL.y),
                      ) %>%
-                select(-!!paste0("mr",f,".x"), -!!paste0("mr",f,".y"), -!!paste0("dbd",f, ".x"), -!!paste0("dbd",f, ".y"),
+               select(-!!paste0("mr",f,".x"), -!!paste0("mr",f,".y"), -!!paste0("dbd",f, ".x"), -!!paste0("dbd",f, ".y"),
                        -DEL.x, -DEL.y)
   
   
@@ -1092,6 +1134,8 @@ for(f in years){
     JB <- JB %>% mutate_all(as.character)
   }
   
+  ###
+  #***Two extra here for some reason
   JC <- full_join(JA, JB)
   JC$WEBTAG <- JC$TAG
   JC <- JC[which(JC$COUNT == 1),]
@@ -1201,6 +1245,7 @@ for(f in years){
   LF$BAND <- LF$PARENT2P
   LF <- LF[,c("NEST", "BAND")]
   
+  #***Missing 4 in 89
   LG <- DU[(!is.na(DU$BAND) & DU$BAND != ""), c("BAND", "METAL")] %>% rename(PARENTM = METAL)
   
   LH <- full_join(LG, LE)
@@ -1267,11 +1312,12 @@ for(f in years){
     NF <- NF %>% mutate_all(as.character)
   }
   
-  #NG and NH different from '86
+  #NH wrong in 89, missing 2
   if(f != "86"){
     NG <- full_join(NE, AB) #Different from 86
     NG <- NG[which(NG$DUMA == "Y"), !names(NG) %in% "DUMA"]
     
+    #***DUmb doesn't exist in 89 for some reason
     NH <- full_join(NF, AC)#Diff from 86
     NH <- NH[which(NH$DUMB == "Y"), !names(NH) %in% "DUMB"]
   }
@@ -1525,7 +1571,7 @@ for(f in years){
     
     if(f > 88 | f < 85){
       OF <- full_join(prev_NL, SPRINGF) #****Fuck it's suppose to be NL of the year before :(
-      OF <- OF[which(is.na(OF$METAL)),]
+      OF <- OF[which(is.na(OF$METAL)), c("BAND", paste0("SMATEM",f), paste0("SMATEP",f), paste0("SD",f), paste0("SM",f))]
       OF$COMMENTS <- "Bird seen spring, no banding record"
     }
     
@@ -1569,18 +1615,6 @@ for(f in years){
 }
 
 
-#########
-#FRIDAY
-#########
-#W/ year '89 figure out weird errors
-#PA statements
-#Look into AGL comments in the later years, may fuck with the code I currently have???
-
-
-##########
-#Monday?
-##########
-#Importing multiple sheets with manip files??
 #Manip statements
 
 ###
