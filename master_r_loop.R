@@ -7,7 +7,7 @@ library(foreign)
 library(dplyr)
 library(stringr)
 
-#SASJC <- read.csv("X:\\brant_data\\SASJC89.csv", colClasses = "character")
+#colnamesFS <- read.csv("X:\\brant_data\\colnamesFS.csv", colClasses = "character")
 
 #Creates and empty dataframe where we'll store instances where a band or metal is repeated so we can look into
 # the data and check for mistakes later
@@ -189,7 +189,8 @@ addToEnv <- function(list, regex){
 
 lists <- c('BSC','EGG','NEST','RECAP', 'MANIP') #List of the type of files will be pulling from
 #years <- c(86:99, sprintf("%02d", c(00:15))) #Vector of the different years we'll be looping through
-years <- c("86", "87", "88", "89", "90")
+#years <- c("86", "87", "88", "89", "90")
+years <- as.character(c("86":"90"))
 
 #This a tad confusing, so we work with winter years the year before. So for example when coding for year 90 
 #we have code for WINTER91; so winter_yrs are the years that will correlate w/ f for where we should run 
@@ -219,6 +220,7 @@ for(f in years){
   if(f > 88){
     prev_SPRINGF <- SPRINGF
   }
+  if(f > 89){prev_WINTER <- WINTER}
   
   addToEnv(list = lists, regex = paste0("*", f)) #Calls the function
   #***rm(list = grep(pattern = "*86", names(.GlobalEnv), value = TRUE)) I need to think about this one for a sec
@@ -534,6 +536,7 @@ for(f in years){
   DF <- DE %>% group_by(METAL) %>% mutate(COUNT = sum(COUNTsum)) 
   CheckReplicates <- Mistakes(DF, groupby="METAL", yeardf = BA ,CheckReplicates)
   DF <- DF[!(DF$COUNT > 1),!names(DF) %in% c(paste0("n", f), "COUNTsum")]
+  if(any(colnames(DF) %in% "BANDET")){DF <- DF[,!names(DF) %in% "BANDET"]}
   
   DG <- DF %>% rename(!!paste0("NC", f) := !!paste0("meanNc",f), !!paste0("NT", f) := !!paste0("meanNt",f))
   
@@ -564,7 +567,7 @@ for(f in years){
     if(any(!is.na(DM$DEL))){
     DM <- DM[!(DM$DEL == "Y"),]}
     DM$dumb <- 1
-  }else{DM <- setNames(data.frame(matrix(ncol = length(colnames(DM)) + 1, nrow = 0)), c(colnames(DM), "dum"))
+  }else{DM <- setNames(data.frame(matrix(ncol = length(colnames(DM)) + 1, nrow = 0)), c(colnames(DM), "dumb"))
         DM <- DM %>% mutate_if(is.logical, as.character)}
   
   DM <- DM %>% rename(!!paste0("dumpr",f) := !!paste0("PR",f), !!paste0("webtag",f) := WEBTAG, !!paste0("ntd",f) := DATE, 
@@ -608,6 +611,7 @@ for(f in years){
   #Could add this in earlier when populating YEARB and yearb86 ?? Initialize it as NA?
   #idk but put it somewhere smarter later
   DS$YEARB[which(DS$YEARB == "")] <- NA
+  DS[[paste0("webtag", f)]][which(DS[[paste0("webtag", f)]] == "")] <- NA
   DS[[paste0("yearb", f)]][which(DS[[paste0("yearb", f)]] == "")] <- NA
   
   for(i in 1:nrow(DS)){
@@ -693,7 +697,7 @@ for(f in years){
       DS$WEBTAGB[i] <- DS$WEBTAG[i]}
     if(!is.na(DS[[paste0("webtag", f)]][i]) & !is.na(DS$WEBTAG[i]) & DS[[paste0("webtag", f)]][i] != DS$WEBTAG[i]){
       DS$WEBTAGB[i] <- DS$WEBTAG[i]
-      DS$COMMENTS[i] <- "Age at banding does not agree with BBL and BSC"
+      DS$COMMENTS[i] <- "Webtag code has changed"
     }
     if(!is.na(DS[[paste0("webtag", f)]][i]) & is.na(DS$WEBTAG[i]) ){DS$WEBTAGB[i] <- DS[[paste0("webtag", f)]][i]}
     if(is.na(DS[[paste0("webtag", f)]][i]) & !is.na(DS$WEBTAG[i]) ){DS$WEBTAGB[i] <- DS$WEBTAG[i]}
@@ -883,7 +887,7 @@ for(f in years){
   }
   
   DU <- DU %>% mutate_all(as.character)
-  FP <- full_join(DU, FO) #Not inner join lmao
+  FP <- full_join(DU, FO) 
   FP <- FP[which(FP$DUM == "Y"),] 
   
   if(nrow(FP) != 0){
@@ -971,6 +975,7 @@ for(f in years){
   #HF <- HF[!(HF$COUNT > 1),]
   HF <- HF %>% group_by(METAL) %>% mutate(COUNT = sum(COUNT)) %>%
                                    summarise_all(~last(.[which(!is.na(.) & (. != "") )]))
+  if(any(colnames(HF) %in% "BANDET")){HF <- HF[,!names(HF) %in% "BANDET"]}
   
   HG <- HF %>% rename(!!paste0("BC",f) := !!paste0("meanbc",f), !!paste0("BT",f) := !!paste0("meanbt",f))
   
@@ -1158,6 +1163,8 @@ for(f in years){
   
   ###
   #***Two extra here for some reason
+  #Start here after lunch
+  
   JC <- full_join(JA, JB)
   JC$WEBTAG <- JC$TAG
   JC <- JC[which(JC$COUNT == 1),]
@@ -1200,7 +1207,8 @@ for(f in years){
   
   JH <- JA %>% rename(WEBTAG = TAG)
   JI <- full_join(JG, JH)
-  JI <- JI[-which(JI$DEL == "Y"), !names(JI) %in% "DEL"] 
+  if(any("Y" %in% JI$DEL)){JI <- JI[-which(JI$DEL == "Y"), ]}
+  JI <- JI[,!names(JI) %in% "DEL"]
   
   JJ <- full_join(JH, JG)
   JJ <- JJ[which(JJ$DEL == "Y"),c("WEBTAG", "NEST")]
@@ -1363,11 +1371,11 @@ for(f in years){
   NJ$COMMENTS <- NA
   
   #***Questionable part, look back at later
-  NJ$NHID <- NA
-  NJ[c("EGGL", "EGGW", "STATE", "PILS", "TAGD", "PARENT1M", "PARENT2M")] <- NA
+  if(f == "86"){NJ$NHID <- NA
+  NJ[c("EGGL", "EGGW", "STATE", "PILS", "TAGD", "PARENT1M", "PARENT2M")] <- NA}
   for(i in 1:nrow(NJ)){
     if(!is.na(NJ$NHID[i]) & !is.na(NJ[[paste0("NHID",f)]][i])){NJ$COMMENTS[i] <- "Double use of applied webtag"}
-    if(is.na(NJ$NHID[i]) &!is.na(NJ[[paste0("NHID",f)]][i])){
+    if(is.na(NJ$NHID[i]) & !is.na(NJ[[paste0("NHID",f)]][i])){
       NJ$EGGL[i] <- NJ[[paste0("EGGL",f)]][i]
       NJ$EGGW[i] <- NJ[[paste0("EGGW",f)]][i]
       NJ$NHID[i] <- NJ[[paste0("NHID",f)]][i]
@@ -1458,6 +1466,10 @@ for(f in years){
     
     TOWE <- NL[(!is.na(NL[[paste0("PR",f)]])),]
     
+    ###
+    #Here after lunch
+    ###
+    
     TOWF <- full_join(TOWE, TOWD)
     TOWF <- TOWF %>% rename(!!paste0("TMATEM",f) := METAL, !!paste0("TMATEP",f) := BAND, !!paste0("TMSEX",f) := SEXB)
     TOWF <- TOWF[-which(is.na(TOWF$REALBAND) | is.na(TOWF[[paste0("TMATEM",f)]])), c('REALBAND', paste0("DTO",f), paste0("TBS",f), paste0("TMATEM",f), 
@@ -1482,7 +1494,8 @@ for(f in years){
     
     TOWK <- full_join(TOWJ, TOWI)
     #***Double check below when there's a year that fits it b/c I'm not sure the which statement is correct.
-    TOWK <- TOWK[-which(is.na(TOWK$METAL) & (is.na(TOWK[[paste0("DTO",f)]]) & is.na(TOWK[[paste0("TMATEP",f)]]))), 
+    TOWK <- TOWK[!is.na(TOWK$METAL),]
+    TOWK <- TOWK[-which(is.na(TOWK[[paste0("DTO",f)]]) & is.na(TOWK[[paste0("TMATEP",f)]])), 
                  c("BAND", paste0("DTO",f), paste0("TMATEM",f), paste0("TMATEP",f), paste0("TBS",f))]
     
     TOWL <- bind_rows(TOWG, TOWH, TOWK)
@@ -1533,9 +1546,9 @@ for(f in years){
     #find duplicate bands from NBRL
     NBRM <- NBRL %>% group_by(BAND) %>% mutate(COUNT = sum(COUNT))
     CheckReplicates <- Mistakes(x = NBRM, groupby = "BAND", yeardf = BA, CheckReplicates)
-    NBRM <- NBRM[!(NBRM$COUNT > 1), !names(NBRM) %in% "COUNT"]
+    NBRM <- NBRM[!(NBRM$COUNT > 1), !names(NBRM) %in% "COUNT"] #***Should we take out replicates or condense?
     
-    NN <- full_join(NL, TOWM) %>% full_join(., NBRM)
+    NN <- full_join(NL, TOWM) # %>% full_join(., NBRM)
     if(f > "87"){
       NN <- full_join(NN, SPRINGF)
       if(f %in% winter_yrs){
@@ -1560,17 +1573,24 @@ for(f in years){
   
     OA$COMMENTS <- as.character(NA)
     
+    #***Comparing NA's think about
     for(i in 1:nrow(OA)){
       if( (!is.na(OA[[paste0("MATEP",f)]][i]) & !is.na(OA[[paste0("TMATEP",f)]][i]) & (OA[[paste0("MATEP",f)]][i] != OA[[paste0("TMATEP",f)]][i])) |
           (!is.na(OA[[paste0("MATEP",f)]][i]) & !is.na(OA[[paste0("NBMATEP",f)]][i]) & (OA[[paste0("MATEP",f)]][i] != OA[[paste0("NBMATEP",f)]][i])) |
-          (!is.na(OA[[paste0("TMATEP",f)]][i]) & !is.na(OA[[paste0("NBMATEP",f)]][i]) & (OA[[paste0("TMATEP",f)]][i] != OA[[paste0("NBMATEP",f)]][i]))
+          (!is.na(OA[[paste0("TMATEP",f)]][i]) & !is.na(OA[[paste0("NBMATEP",f)]][i]) & (OA[[paste0("TMATEP",f)]][i] != OA[[paste0("NBMATEP",f)]][i])) #|
+          #(is.na(OA[[paste0("MATEP",f)]][i]) & (!is.na(OA[[paste0("TMATEP",f)]][i]) | !is.na(OA[[paste0("NBMATEP",f)]][i])) )
       ){
         OA$COMMENTS[i] <- "Mate changed within year"
       }
       if(f > '88'){
         if( (!is.na(OA[[paste0("MATEP",f)]][i]) & !is.na(OA[[paste0("SMATEP",f)]][i]) & (OA[[paste0("MATEP",f)]][i] != OA[[paste0("SMATEP",f)]][i])) |
             (!is.na(OA[[paste0("TMATEP",f)]][i]) & !is.na(OA[[paste0("SMATEP",f)]][i]) & (OA[[paste0("TMATEP",f)]][i] != OA[[paste0("SMATEP",f)]][i])) |
-            (!is.na(OA[[paste0("SMATEP",f)]][i]) & !is.na(OA[[paste0("NBMATEP",f)]][i]) & (OA[[paste0("SMATEP",f)]][i] != OA[[paste0("NBMATEP",f)]][i]))
+            (!is.na(OA[[paste0("SMATEP",f)]][i]) & !is.na(OA[[paste0("NBMATEP",f)]][i]) & (OA[[paste0("SMATEP",f)]][i] != OA[[paste0("NBMATEP",f)]][i])) #|
+            
+            #Checking for NA vs non-NA values
+            # (is.na(OA[[paste0("MATEP",f)]][i]) & (!is.na(OA[[paste0("TMATEP",f)]][i]) | !is.na(OA[[paste0("NBMATEP",f)]][i]) | !is.na(OA[[paste0("SMATEP",f)]][i]))) |
+            # (is.na(OA[[paste0("TMATEP",f)]][i]) & (!is.na(OA[[paste0("SMATEP",f)]][i]) | !is.na(OA[[paste0("NBMATEP",f)]][i]) | !is.na(OA[[paste0("MATEP",f)]][i]))) |
+            # (is.na(OA[[paste0("SMATEP",f)]][i]) & (!is.na(OA[[paste0("TMATEP",f)]][i]) | !is.na(OA[[paste0("NBMATEP",f)]][i]) | !is.na(OA[[paste0("MATEP",f)]][i]))) 
         ){
           OA$COMMENTS[i] <- "Mate changed within year"
         }
@@ -1621,10 +1641,12 @@ for(f in years){
       OF$COMMENTS <- "Bird seen spring, no banding record"
     }
     
-    if(any(grepl(f, colnames(WINTER)))){
-      OG <- full_join(prev_NL, WINTER) #****It's suppose to be NL of last year, think about that
-      OG <- OG[which(is.na(OG$METAL)),]
-      OG$COMMENTS <- "Bird seen winter, no banding records"
+    if(f > 89){
+      if(any(grepl(f, colnames(prev_WINTER)))){
+        OG <- full_join(prev_NL, WINTER) #***Somtimes we merge with NL sometimes in NN :) 
+        OG <- OG[which(is.na(OG$METAL)),]
+        OG$COMMENTS <- "Bird seen winter, no banding records" 
+      }
     }
     
     
