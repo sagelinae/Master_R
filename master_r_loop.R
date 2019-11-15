@@ -7,7 +7,7 @@ library(foreign)
 library(dplyr)
 library(stringr)
 
-#colnamesFS <- read.csv("X:\\brant_data\\colnamesFS.csv", colClasses = "character")
+#SASJC93 <- read.csv("X:\\brant_data\\SASJC93.csv", colClasses = "character")
 
 #Creates and empty dataframe where we'll store instances where a band or metal is repeated so we can look into
 # the data and check for mistakes later
@@ -1156,7 +1156,8 @@ for(f in years){
   JA <- current_egg[( current_egg[["TAG"]] != "" ),] #I think "" is right here, so far I have seen "" but no NA's so this seems good for now
   keep <- c("COUNT", "NEST", "EGG",'TAGD', "STATE", "DATE", "TAG")
   if(nrow(JA) != 0){
-    JA$EGG <- JA$EGGB 
+    JA$EGG <- JA$EGGB
+    JA$EGG[which(JA$EGG == "?" & JA$EGGA != "")] <- JA$EGGA[which(JA$EGG == "?" & JA$EGGA != "")]
     JA$TAGD <- JA$DATE
     JA$COUNT <- "1"
     JA <- JA[,keep]
@@ -1175,22 +1176,18 @@ for(f in years){
     JB <- JB %>% mutate_all(as.character)
   }
   
-  hatch_measures <- current_egg[(current_egg$TAG != "" & current_egg$LENGTH != "" & current_egg$WIDTH != ""), c("NEST", "EGGB", "LENGTH", "WIDTH", "TAG")] %>% rename(EGG = EGGB)
+  hatch_measures <- current_egg[(current_egg$TAG != "" & current_egg$LENGTH != "" & 
+                                 current_egg$LENGTH != "0" & current_egg$WIDTH != "" & current_egg$WIDTH != "0"),
+                                 c("NEST", "EGGB", "LENGTH", "WIDTH", "TAG")] %>% rename(EGG = EGGB)
   
   #double check against SAS
   JC <- left_join(JA, JB)
-  fake <- left_join(JC, hatch_measures, by = c("NEST", "EGG")) %>% mutate(L = coalesce(LENGTH.x, LENGTH.y),
-                                                                          W = coalesce(WIDTH.x, WIDTH.y),
-                                                                          TAG = coalesce(TAG.x, TAG.y)) %>% 
-                                                                   select(-LENGTH.x, -LENGTH.y, -WIDTH.x, -WIDTH.y, -TAG.x, -TAG.y)
-  
-  
-  JC$WEBTAG <- JC$TAG
-  JC <- JC[which(JC$COUNT == 1),]
-  JC$D <- JC$TAGD
-  JC$L <- JC$LENGTH
-  JC$W <- JC$WIDTH
-  JC <- JC[,!names(JC) %in% c("TAGD", "LENGTH", "WIDTH", "TAG")]
+  JC <- left_join(JC, hatch_measures, by = c("NEST", "EGG", "TAG")) %>% mutate(L = coalesce(LENGTH.x, LENGTH.y),
+                                                                        W = coalesce(WIDTH.x, WIDTH.y)#,
+                                                                        #WEBTAG = coalesce(TAG.x, TAG.y)
+                                                                        ) %>% 
+                                                                 select(-LENGTH.x, -LENGTH.y, -WIDTH.x, -WIDTH.y) %>% #, -TAG.x, -TAG.y
+                                                                 rename(D = TAGD, WEBTAG = TAG)
   
   JC <- JC %>% mutate_at(vars(D, L, W, COUNT), as.numeric)
   
@@ -1520,7 +1517,10 @@ for(f in years){
     TOWM <- TOWL %>% group_by(BAND) %>% mutate(COUNT = sum(COUNT))
     CheckReplicates <- Mistakes(x = TOWM, groupby = "BAND", yeardf = BA, CheckReplicates)
     #I think this should just be condensed like we decided with NBRM? 
-    TOWM <- TOWM[!(TOWM$COUNT > 1), !names(TOWM) %in% "COUNT"]
+    #TOWM <- TOWM[!(TOWM$COUNT > 1), !names(TOWM) %in% "COUNT"]
+    #Condenses down duplicates by picking the last instance with the most information. Could also just do last idk
+    TOWM <- TOWM[,!names(TOWM) %in% "COUNT"] %>% group_by(BAND) %>%
+      summarise_all(~last(.[which(!is.na(.) & (. != "") )]))
     
     NBRA <- NBBAND[(NBBAND$YEAR == full_year),] %>% rename(REALBAND = BAND, !!paste0("NBC",f) := NBCOL)
     
@@ -1595,8 +1595,7 @@ for(f in years){
     for(i in 1:nrow(OA)){
       if( (!is.na(OA[[paste0("MATEP",f)]][i]) & !is.na(OA[[paste0("TMATEP",f)]][i]) & (OA[[paste0("MATEP",f)]][i] != OA[[paste0("TMATEP",f)]][i])) |
           (!is.na(OA[[paste0("MATEP",f)]][i]) & !is.na(OA[[paste0("NBMATEP",f)]][i]) & (OA[[paste0("MATEP",f)]][i] != OA[[paste0("NBMATEP",f)]][i])) |
-          (!is.na(OA[[paste0("TMATEP",f)]][i]) & !is.na(OA[[paste0("NBMATEP",f)]][i]) & (OA[[paste0("TMATEP",f)]][i] != OA[[paste0("NBMATEP",f)]][i])) #|
-          #(is.na(OA[[paste0("MATEP",f)]][i]) & (!is.na(OA[[paste0("TMATEP",f)]][i]) | !is.na(OA[[paste0("NBMATEP",f)]][i])) )
+          (!is.na(OA[[paste0("TMATEP",f)]][i]) & !is.na(OA[[paste0("NBMATEP",f)]][i]) & (OA[[paste0("TMATEP",f)]][i] != OA[[paste0("NBMATEP",f)]][i])) 
       ){
         OA$COMMENTS[i] <- "Mate changed within year"
       }
@@ -1604,11 +1603,6 @@ for(f in years){
         if( (!is.na(OA[[paste0("MATEP",f)]][i]) & !is.na(OA[[paste0("SMATEP",f)]][i]) & (OA[[paste0("MATEP",f)]][i] != OA[[paste0("SMATEP",f)]][i])) |
             (!is.na(OA[[paste0("TMATEP",f)]][i]) & !is.na(OA[[paste0("SMATEP",f)]][i]) & (OA[[paste0("TMATEP",f)]][i] != OA[[paste0("SMATEP",f)]][i])) |
             (!is.na(OA[[paste0("SMATEP",f)]][i]) & !is.na(OA[[paste0("NBMATEP",f)]][i]) & (OA[[paste0("SMATEP",f)]][i] != OA[[paste0("NBMATEP",f)]][i])) #|
-            
-            #Checking for NA vs non-NA values
-            # (is.na(OA[[paste0("MATEP",f)]][i]) & (!is.na(OA[[paste0("TMATEP",f)]][i]) | !is.na(OA[[paste0("NBMATEP",f)]][i]) | !is.na(OA[[paste0("SMATEP",f)]][i]))) |
-            # (is.na(OA[[paste0("TMATEP",f)]][i]) & (!is.na(OA[[paste0("SMATEP",f)]][i]) | !is.na(OA[[paste0("NBMATEP",f)]][i]) | !is.na(OA[[paste0("MATEP",f)]][i]))) |
-            # (is.na(OA[[paste0("SMATEP",f)]][i]) & (!is.na(OA[[paste0("TMATEP",f)]][i]) | !is.na(OA[[paste0("NBMATEP",f)]][i]) | !is.na(OA[[paste0("MATEP",f)]][i]))) 
         ){
           OA$COMMENTS[i] <- "Mate changed within year"
         }
@@ -1626,7 +1620,7 @@ for(f in years){
     OB <- NN[!(is.na(NN[[paste0("NMSEX",f)]]) & is.na(NN[[paste0("TMSEX",f)]]) & is.na(NN[[paste0("NBMSEX",f)]])),]
     OB$COMMENTS <- as.character(NA)
     OB$COMMENTS[which((OB[[paste0("NMSEX",f)]] == OB$SEXB) | (OB[[paste0("TMSEX",f)]] == OB$SEXB)| 
-                    (OB[[paste0("NBMSEX",f)]] == OB$SEXB) | (is.na(OB$SEXB) & is.na(OB[[paste0("NMSEX",f)]])) | 
+                     (OB[[paste0("NBMSEX",f)]] == OB$SEXB) | (is.na(OB$SEXB) & is.na(OB[[paste0("NMSEX",f)]])) | 
                      (is.na(OB$SEXB) & is.na(OB[[paste0("NBMSEX",f)]])) |
                      (is.na(OB$SEXB) & is.na(OB[[paste0("TMSEX",f)]])))] <- "Same sex pair" #hell yeah gay bird rights
     keep <- c("METAL", "BAND", "SEXB", paste0("MATEM",f), paste0("MATEP",f), paste0("NBD",f), paste0("NBMATEM",f), paste0("NBMATEP",f), 
