@@ -1153,8 +1153,8 @@ for(f in years){
   current_egg <- get(paste0("EGG",f))
   current_egg$EGGB[which(current_egg$EGGB == "" & current_egg$TAG != "")] <- "?"
   
-  JA <- get(paste0("EGG",f))[( get(paste0("EGG",f))[["TAG"]] != "" ),] #I think "" is right here, so far I have seen "" but no NA's so this seems good for now
-  keep <- c("COUNT", "NEST", "EGG", 'TAGD', "STATE", "DATE", "TAG")
+  JA <- current_egg[( current_egg[["TAG"]] != "" ),] #I think "" is right here, so far I have seen "" but no NA's so this seems good for now
+  keep <- c("COUNT", "NEST", "EGG",'TAGD', "STATE", "DATE", "TAG")
   if(nrow(JA) != 0){
     JA$EGG <- JA$EGGB 
     JA$TAGD <- JA$DATE
@@ -1165,7 +1165,7 @@ for(f in years){
     JA <- JA %>% mutate_all(as.character)
   }
   
-  JB <- get(paste0("EGG",f))[(get(paste0("EGG",f))[["LENGTH"]] != "" | get(paste0("EGG",f))[["WIDTH"]] != ""),]
+  JB <- current_egg[(current_egg[["LENGTH"]] != "" | current_egg[["WIDTH"]] != ""),]
   keep <- c("NEST", "EGG", "LENGTH", "WIDTH")
   if(nrow(JA) != 0){
     JB$EGG <- JB$EGGA
@@ -1175,10 +1175,16 @@ for(f in years){
     JB <- JB %>% mutate_all(as.character)
   }
   
+  hatch_measures <- current_egg[(current_egg$TAG != "" & current_egg$LENGTH != "" & current_egg$WIDTH != ""), c("NEST", "EGGB", "LENGTH", "WIDTH", "TAG")] %>% rename(EGG = EGGB)
   
-  #***Off in instances where egg is empty, we keep both SAS picks one
-  #GMM056 in yr '89
-  JC <- full_join(JA, JB)
+  #double check against SAS
+  JC <- left_join(JA, JB)
+  fake <- left_join(JC, hatch_measures, by = c("NEST", "EGG")) %>% mutate(L = coalesce(LENGTH.x, LENGTH.y),
+                                                                          W = coalesce(WIDTH.x, WIDTH.y),
+                                                                          TAG = coalesce(TAG.x, TAG.y)) %>% 
+                                                                   select(-LENGTH.x, -LENGTH.y, -WIDTH.x, -WIDTH.y, -TAG.x, -TAG.y)
+  
+  
   JC$WEBTAG <- JC$TAG
   JC <- JC[which(JC$COUNT == 1),]
   JC$D <- JC$TAGD
