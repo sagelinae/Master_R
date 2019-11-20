@@ -7,7 +7,7 @@ library(foreign)
 library(dplyr)
 library(stringr)
 
-#SASJC93 <- read.csv("X:\\brant_data\\SASJC93.csv", colClasses = "character")
+#SASNN93 <- read.csv("X:\\brant_data\\SASNN93.csv", colClasses = "character")
 
 #Creates and empty dataframe where we'll store instances where a band or metal is repeated so we can look into
 # the data and check for mistakes later
@@ -189,7 +189,7 @@ addToEnv <- function(list, regex){
 
 lists <- c('BSC','EGG','NEST','RECAP', 'MANIP') #List of the type of files will be pulling from
 #years <- c(86:99, sprintf("%02d", c(00:15))) #Vector of the different years we'll be looping through
-years <- as.character(c("86":"89"))
+years <- as.character(c("86":"92"))
 
 
 #This a tad confusing, so we work with winter years the year before. So for example when coding for year 90 
@@ -1030,7 +1030,10 @@ for(f in years){
                      ) %>%
                select(-!!paste0("mr",f,".x"), -!!paste0("mr",f,".y"), -!!paste0("dbd",f, ".x"), -!!paste0("dbd",f, ".y"),
                        -DEL.x, -DEL.y)
-  
+  if("X.x" %in% colnames(HN)){
+    HN <- HN %>% mutate(X = coalesce(X.x, X.y),) %>%
+      select(-X.x, -X.y)
+  }
   
   HO <- HN[(is.na(HN$duma) & HN$dumb == "1"),]
   HP <- HH 
@@ -1454,6 +1457,12 @@ for(f in years){
                             paste0("SMATEP", (as.numeric(f)+1)), paste0("SMATEM", (as.numeric(f)+1)))]
       
       SPRINGF <- bind_rows(SPRINGD, SPRINGE)
+      SPRINGF$COUNT <- 1
+      SPRINGF <- SPRINGF %>% group_by(BAND) %>% mutate(COUNT = sum(COUNT))
+      CheckReplicates <- Mistakes(x = SPRINGF, groupby = "BAND", yeardf = BA, CheckReplicates)
+      #Take out the last one to match SAS
+      SPRINGF <- SPRINGF [,!names(SPRINGF) %in% "COUNT"] %>% group_by(BAND) %>%
+        summarise_all(~last(.))
     }
       
     
