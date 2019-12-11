@@ -7,7 +7,7 @@ library(foreign)
 library(dplyr)
 library(stringr)
 
-#SASNN93 <- read.csv("X:\\brant_data\\SASNN93.csv", colClasses = "character")
+#SASLK96 <- read.csv("X:\\brant_data\\SASLK96.csv", colClasses = "character")
 
 #Creates and empty dataframe where we'll store instances where a band or metal is repeated so we can look into
 # the data and check for mistakes later
@@ -30,7 +30,8 @@ Mistakes <- function(x, groupby, yeardf,CheckReplicates){
     name <- as.character(substitute(x)) #pulls the name of the df the duplicates are from
     year <-  names(table(yeardf$YEAR))[as.vector(table(yeardf$YEAR)) == max(table(yeardf$YEAR))] #This might be ok once in giant for loop
     subset <- x[x$COUNT > 1 & !is.na(x[[noquote(groupby)]]),] %>% select(!!groupby, starts_with("METAL"), starts_with("BAND"), 
-                                                                starts_with("NEST"), matches("TMATE*")) %>%
+                                                                starts_with("NEST"), matches("TMATE*"), matches("SMATE*"), matches("MATE*"),
+                                                                matches("PARENT*")) %>%
                                                          mutate(FROM = name, ID = !!groupby, YEAR = year)
     CheckReplicates <- bind_rows(CheckReplicates, subset)
   } 
@@ -189,7 +190,7 @@ addToEnv <- function(list, regex){
 
 lists <- c('BSC','EGG','NEST','RECAP', 'MANIP') #List of the type of files will be pulling from
 #years <- c(86:99, sprintf("%02d", c(00:15))) #Vector of the different years we'll be looping through
-years <- as.character(c("86":"92"))
+years <- as.character(c("86":"93"))
 
 
 #This a tad confusing, so we work with winter years the year before. So for example when coding for year 90 
@@ -903,6 +904,12 @@ for(f in years){
     FP[[paste0("MATEM",f)]]<- FP$METAL
     FP[[paste0("MATEP",f)]] <- FP[[paste0("mateband",f)]]
     FP[[paste0("NMSEX",f)]] <- FP$SEXB
+    FP$COUNT <- 1
+    
+    FP <- FP %>% group_by(REALBAND) %>% mutate(COUNT = sum(COUNT))
+    CheckReplicates <- Mistakes(x = FP, groupby = "REALBAND", yeardf = BA, CheckReplicates)
+    FP <- FP %>% group_by(REALBAND) %>% summarise_all(~last(.[which(!is.na(.) & (. != "") )]))
+    #summarise_all(~last(.))
     
     FP <- FP[,c(paste0("MATEM",f), 'NEST', paste0("MATEP",f), paste0("n",f), paste0("CS",f), paste0("ID",f), 
                 paste0("HD",f), 'REALBAND', paste0("NMSEX",f))]
@@ -1186,18 +1193,15 @@ for(f in years){
   #double check against SAS
   JC <- left_join(JA, JB)
   JC <- left_join(JC, hatch_measures, by = c("NEST", "EGG", "TAG")) %>% mutate(L = coalesce(LENGTH.x, LENGTH.y),
-                                                                        W = coalesce(WIDTH.x, WIDTH.y)#,
-                                                                        #WEBTAG = coalesce(TAG.x, TAG.y)
-                                                                        ) %>% 
-                                                                 select(-LENGTH.x, -LENGTH.y, -WIDTH.x, -WIDTH.y) %>% #, -TAG.x, -TAG.y
-                                                                 rename(D = TAGD, WEBTAG = TAG)
+                                                                               W = coalesce(WIDTH.x, WIDTH.y)#,
+                                                                               #WEBTAG = coalesce(TAG.x, TAG.y)
+                                                                              ) %>% 
+                                                                        select(-LENGTH.x, -LENGTH.y, -WIDTH.x, -WIDTH.y) %>% #, -TAG.x, -TAG.y
+                                                                        rename(D = TAGD, WEBTAG = TAG)
   
   JC <- JC %>% mutate_at(vars(D, L, W, COUNT), as.numeric)
+  JC <- unique(JC)
   
-  #*** Not sure if my function can handle multiple inputs for grouby??
-  #This one is weird so I'm ignoring it for now
-  #JD <- JC %>% group_by(WEBTAG, NEST, EGG) %>% mutate(COUNT = sum(COUNT))
-  #CheckReplicates <- Mistakes(JD, groupby = "WEBTAG", yeardf = BA, CheckReplicates)
   JD <- JC %>% group_by(WEBTAG, NEST, EGG) %>% summarise(MD = mean_(JC, D), ML = mean_(JC, L), 
                                                              MW = mean_(JC,W), C = sum(COUNT))
   
@@ -1309,6 +1313,12 @@ for(f in years){
   LI <- LI %>% rename(PARENT2M = PARENTM, PARENT2P = BAND)
   
   LJ <- full_join(LH, LI)
+  LJ$COUNT <- 1
+  LJ <- LJ %>% group_by(NEST) %>% mutate(COUNT = sum(COUNT))
+  CheckReplicates <- Mistakes(x = LJ, groupby = "NEST", yeardf = BA, CheckReplicates)
+  LJ <- LJ [,!names(LJ) %in% "COUNT"] %>% group_by(NEST) %>%
+    summarise_all(~last(.))
+  
   LK <- full_join(JL, LJ)
   LK <- LK[-which(is.na(LK$WEBTAG)),]
   if(nrow(LK) !=0){LK$KEEP <- "Y"}else{
@@ -1392,26 +1402,26 @@ for(f in years){
   #***Questionable part, look back at later
   if(f == "86"){NJ$NHID <- NA
   NJ[c("EGGL", "EGGW", "STATE", "PILS", "TAGD", "PARENT1M", "PARENT2M")] <- NA}
+  
   for(i in 1:nrow(NJ)){
     if(!is.na(NJ$NHID[i]) & !is.na(NJ[[paste0("NHID",f)]][i])){NJ$COMMENTS[i] <- "Double use of applied webtag"}
     if(is.na(NJ$NHID[i]) & !is.na(NJ[[paste0("NHID",f)]][i])){
-      NJ$EGGL[i] <- NJ[[paste0("EGGL",f)]][i]
-      NJ$EGGW[i] <- NJ[[paste0("EGGW",f)]][i]
-      NJ$NHID[i] <- NJ[[paste0("NHID",f)]][i]
-      NJ$STATE[i] <- NJ[[paste0("STATE",f)]][i]
-      NJ$PILS[i] <- NJ[[paste0("PILS",f)]][i]
-      NJ$TAGD[i] <- NJ[[paste0("TAGD",f)]][i]
-      NJ$PARENT1M[i] <- NJ[[paste0("PARENT1M",f)]][i]
-      NJ$PARENT2M[i] <- NJ[[paste0("PARENT1P",f)]][i]
+      NJ$EGGL[which(NJ$METAL == NJ$METAL[i])] <- NJ[[paste0("EGGL",f)]][i]
+      NJ$EGGW[which(NJ$METAL == NJ$METAL[i])] <- NJ[[paste0("EGGW",f)]][i]
+      NJ$NHID[which(NJ$METAL == NJ$METAL[i])] <- NJ[[paste0("NHID",f)]][i]
+      NJ$STATE[which(NJ$METAL == NJ$METAL[i])] <- NJ[[paste0("STATE",f)]][i]
+      NJ$PILS[which(NJ$METAL == NJ$METAL[i])] <- NJ[[paste0("PILS",f)]][i]
+      NJ$TAGD[which(NJ$METAL == NJ$METAL[i])] <- NJ[[paste0("TAGD",f)]][i]
+      NJ$PARENT1M[which(NJ$METAL == NJ$METAL[i])] <- NJ[[paste0("PARENT1M",f)]][i]
+      NJ$PARENT2M[which(NJ$METAL == NJ$METAL[i])] <- NJ[[paste0("PARENT2M",f)]][i]
     }
   }
   #I don't like the thing below I don't know why we do it in '86 and I don't want to lol
   #NJ$TAGD <- "   " #***Why do we do this #'non 86 year doesn't do this
   
-  NK <- NJ[(!is.na(NJ$COMMENTS)),]
+  NK <- NJ[(!is.na(NJ$COMMENTS)), c("METAL", "BAND", "WEBTAG", "COMMENTS")]
   if(nrow(NK) != 0){
     NK$YEAR <- f
-    NK <- NK[,c("METAL", "BAND", "COMMENTS", "YEAR", "WEBTAG")]
   }else{
     NK <- setNames(data.frame(matrix(nrow = 0, ncol = 5)), c("METAL", "BAND", "COMMENTS", "YEAR", "WEBTAG"))
     NK <- NK %>% mutate_all(as.character)
@@ -1444,6 +1454,7 @@ for(f in years){
                                                                 !!paste0("SMATEP", (as.numeric(f)+1)) := BAND)
       SPRINGC <- SPRINGC[,c("REALBAND", paste0("SL", (as.numeric(f)+1)), paste0("SM", (as.numeric(f)+1)), paste0("SD", (as.numeric(f)+1)), 
                             paste0("SMATEM", (as.numeric(f)+1)), paste0("SMATEP", (as.numeric(f)+1)))]
+      
       
       SPRINGD <- SPRINGC %>% rename(BAND = REALBAND)
       
@@ -1633,7 +1644,8 @@ for(f in years){
                      (is.na(OB$SEXB) & is.na(OB[[paste0("NBMSEX",f)]])) |
                      (is.na(OB$SEXB) & is.na(OB[[paste0("TMSEX",f)]])))] <- "Same sex pair" #hell yeah gay bird rights
     keep <- c("METAL", "BAND", "SEXB", paste0("MATEM",f), paste0("MATEP",f), paste0("NBD",f), paste0("NBMATEM",f), paste0("NBMATEP",f), 
-              paste0("NBMSEX",f), paste0("DTO",f), paste0("TMATEM",f), paste0("TMATEP",f), paste0("TBS",f), paste0("TMSEX",f), "COMMENTS")
+              paste0("NBMSEX",f), paste0("DTO",f), paste0("TMATEM",f), paste0("TMATEP",f), paste0("TBS",f), paste0("TMSEX",f), 
+              if(paste0("NMSEX",f) %in% colnames(OB)){paste0("NMSEX",f)},"COMMENTS")
     OB <- OB[!is.na(OB$COMMENTS), keep]
     
     
@@ -1665,7 +1677,7 @@ for(f in years){
     
     #***When close to the end, run full program joining with all NL and run again with all NN and compare
     if(f > 89){
-      if(any(grepl(f, colnames(prev_WINTER)))){
+      if(any(grepl((as.numeric(f)-1), colnames(prev_WINTER)))){
         if(f %in% NL_yrs){ OG <- full_join(prev_NL, prev_WINTER) }
         if(f %in% NN_yrs){ OG <- full_join(prev_NN, prev_WINTER) }
         OG <- OG[which(is.na(OG$METAL)), c("BAND", paste0("WD",f), paste0("WM",f))]
