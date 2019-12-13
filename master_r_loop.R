@@ -7,7 +7,7 @@ library(foreign)
 library(dplyr)
 library(stringr)
 
-#SASLK96 <- read.csv("X:\\brant_data\\SASLK96.csv", colClasses = "character")
+#SASSPRINGC <- read.csv("X:\\brant_data\\SASSPRINGC.csv", colClasses = "character")
 
 #Creates and empty dataframe where we'll store instances where a band or metal is repeated so we can look into
 # the data and check for mistakes later
@@ -536,12 +536,14 @@ for(f in years){
   #   which we combined in BS, so we might have duplicate metals because of that and taking the mean between 
   #   them makes sense I think ???????????
   
-  DE <- merge(DA, DD, by = c("METAL", "DATE"))
+  DA$DATE <- as.numeric(DA$DATE)
+  DE <- full_join(DA, DD, by = c("METAL", "DATE"))
   DE <- DE[(!is.na(DE$COUNTsum)), !names(DE) %in% c(paste0("Nc", f), paste0("Nt", f))]
   
   DF <- DE %>% group_by(METAL) %>% mutate(COUNT = sum(COUNTsum)) 
   CheckReplicates <- Mistakes(DF, groupby="METAL", yeardf = BA ,CheckReplicates)
-  DF <- DF[!(DF$COUNT > 1),!names(DF) %in% c(paste0("n", f), "COUNTsum")]
+  DF <- DF[,!names(DF) %in% c(paste0("n", f), "COUNTsum")] %>% group_by(METAL) %>% 
+                                                               summarise_all(~last(.[which(!is.na(.) & (. != "") )]))
   if(any(colnames(DF) %in% "BANDET")){DF <- DF[,!names(DF) %in% "BANDET"]}
   
   DG <- DF %>% rename(!!paste0("NC", f) := !!paste0("meanNc",f), !!paste0("NT", f) := !!paste0("meanNt",f))
@@ -897,7 +899,11 @@ for(f in years){
   }
   
   DU <- DU %>% mutate_all(as.character)
-  FP <- full_join(DU, FO) 
+  if("NEST" %in% colnames(DU)){
+    DU$NEST[which(DU$NEST == "")] <- NA
+    FP <- full_join(DU, FO, by = "BAND") %>% mutate(NEST = coalesce(NEST.x, NEST.y)) %>% select(-NEST.x, -NEST.y)
+    }else{ FP <- full_join(DU, FO, by = "BAND")}
+  
   FP <- FP[which(FP$DUM == "Y"),] 
   
   if(nrow(FP) != 0){
@@ -930,8 +936,11 @@ for(f in years){
   FS <- FS[which(!is.na(FS$METAL)),]
   FS <- FS[, !names(FS) %in% "NEST"]
   
-  FT <- full_join(DU, FR) 
-  FT <- FT[which(is.na(FT$METAL)), "BAND", drop = FALSE] #Changing "." to NA
+  if("NEST" %in% colnames(DU)){
+    FT <- full_join(DU, FR, by = "BAND") %>% mutate(NEST = coalesce(NEST.x, NEST.y)) %>% select(-NEST.x, -NEST.y) 
+  }else{FT <- full_join(DU, FR, by = "BAND")}
+  
+  FT <- FT[which(is.na(FT$METAL)), "BAND", drop = FALSE] 
   if(nrow(FT) != 0){
     FT$YEAR <- f
     FT$COMMENTS <- "Bird seen at nest, no banding record"
@@ -1316,8 +1325,9 @@ for(f in years){
   LJ$COUNT <- 1
   LJ <- LJ %>% group_by(NEST) %>% mutate(COUNT = sum(COUNT))
   CheckReplicates <- Mistakes(x = LJ, groupby = "NEST", yeardf = BA, CheckReplicates)
-  LJ <- LJ [,!names(LJ) %in% "COUNT"] %>% group_by(NEST) %>%
-    summarise_all(~last(.))
+  LJ <- LJ [,!names(LJ) %in% "COUNT"]
+  #LJ <- LJ [,!names(LJ) %in% "COUNT"] %>% group_by(NEST) %>% #Trying to decide if I need this here?
+    #summarise_all(~last(.))
   
   LK <- full_join(JL, LJ)
   LK <- LK[-which(is.na(LK$WEBTAG)),]
@@ -1473,7 +1483,7 @@ for(f in years){
       CheckReplicates <- Mistakes(x = SPRINGF, groupby = "BAND", yeardf = BA, CheckReplicates)
       #Take out the last one to match SAS
       SPRINGF <- SPRINGF [,!names(SPRINGF) %in% "COUNT"] %>% group_by(BAND) %>%
-        summarise_all(~last(.))
+                                                             summarise_all(~last(.))
     }
       
     
@@ -1611,7 +1621,6 @@ for(f in years){
   
     OA$COMMENTS <- as.character(NA)
     
-    #***Comparing NA's think about
     for(i in 1:nrow(OA)){
       if( (!is.na(OA[[paste0("MATEP",f)]][i]) & !is.na(OA[[paste0("TMATEP",f)]][i]) & (OA[[paste0("MATEP",f)]][i] != OA[[paste0("TMATEP",f)]][i])) |
           (!is.na(OA[[paste0("MATEP",f)]][i]) & !is.na(OA[[paste0("NBMATEP",f)]][i]) & (OA[[paste0("MATEP",f)]][i] != OA[[paste0("NBMATEP",f)]][i])) |
@@ -1677,7 +1686,7 @@ for(f in years){
     
     #***When close to the end, run full program joining with all NL and run again with all NN and compare
     if(f > 89){
-      if(any(grepl((as.numeric(f)-1), colnames(prev_WINTER)))){
+      if(any(grepl(f, colnames(prev_WINTER)))){
         if(f %in% NL_yrs){ OG <- full_join(prev_NL, prev_WINTER) }
         if(f %in% NN_yrs){ OG <- full_join(prev_NN, prev_WINTER) }
         OG <- OG[which(is.na(OG$METAL)), c("BAND", paste0("WD",f), paste0("WM",f))]
