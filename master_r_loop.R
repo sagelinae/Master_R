@@ -7,7 +7,7 @@ library(foreign)
 library(dplyr)
 library(stringr)
 
-#SASSPRINGC <- read.csv("X:\\brant_data\\SASSPRINGC.csv", colClasses = "character")
+#SASJC99 <- read.csv("X:\\brant_data\\SASJC99.csv", colClasses = "character")
 
 #Creates and empty dataframe where we'll store instances where a band or metal is repeated so we can look into
 # the data and check for mistakes later
@@ -190,7 +190,7 @@ addToEnv <- function(list, regex){
 
 lists <- c('BSC','EGG','NEST','RECAP', 'MANIP') #List of the type of files will be pulling from
 #years <- c(86:99, sprintf("%02d", c(00:15))) #Vector of the different years we'll be looping through
-years <- as.character(c("86":"93"))
+years <- as.character(c("86":"90"))
 
 
 #This a tad confusing, so we work with winter years the year before. So for example when coding for year 90 
@@ -932,7 +932,9 @@ for(f in years){
   FR[[paste0("MATEP",f)]][which(FR[[paste0("mateband",f)]] == "UM")] <- FR[[paste0("mateband",f)]][which(FR[[paste0("mateband",f)]] == "UM")] #lol this looks awful i'm so sorry
   FR <- FR[, !names(FR) %in% paste0("mateband",f)]
   
-  FS <- full_join(DU, FR)
+  if("NEST" %in% colnames(DU)){
+    FS <- full_join(DU, FR, by = "BAND") %>% mutate(NEST = coalesce(NEST.x, NEST.y)) %>% select(-NEST.x, -NEST.y) 
+  }else{FS <- full_join(DU, FR, by = "BAND") }
   FS <- FS[which(!is.na(FS$METAL)),]
   FS <- FS[, !names(FS) %in% "NEST"]
   
@@ -1324,10 +1326,10 @@ for(f in years){
   LJ <- full_join(LH, LI)
   LJ$COUNT <- 1
   LJ <- LJ %>% group_by(NEST) %>% mutate(COUNT = sum(COUNT))
-  CheckReplicates <- Mistakes(x = LJ, groupby = "NEST", yeardf = BA, CheckReplicates)
+  CheckReplicates <- Mistakes(x = LJ, groupby = "NEST", yeardf = BA, CheckReplicates) #idk why this was commented out I don't think it should be
   LJ <- LJ [,!names(LJ) %in% "COUNT"]
-  #LJ <- LJ [,!names(LJ) %in% "COUNT"] %>% group_by(NEST) %>% #Trying to decide if I need this here?
-    #summarise_all(~last(.))
+  LJ <- LJ [,!names(LJ) %in% "COUNT"] %>% group_by(NEST) %>% #This is necessary b/c LK will join funny if you give it too many options
+    summarise_all(~last(.))
   
   LK <- full_join(JL, LJ)
   LK <- LK[-which(is.na(LK$WEBTAG)),]
@@ -1372,7 +1374,7 @@ for(f in years){
     NE <- NE %>% mutate_all(as.character)
   }
   
-  NF <- NB[(NB$AGEB == "ASY"), c("METAL", "WEBTAG", "AGEB", "YEARB")]
+  NF <- NB[(NB$AGEB == "ASY" & !is.na(NB$AGEB)), c("METAL", "WEBTAG", "AGEB", "YEARB")] #Added !is.na 12/26
   if(nrow(NF) != 0){
     NF$DUMB <- "Y"
   }else{
@@ -1440,42 +1442,51 @@ for(f in years){
   NL <- NJ[,!names(NJ) %in% c("COMMENTS", paste0("EGGL",f), paste0("EGGW",f), paste0("NHID",f), paste0("STATE",f), 
                               paste0("PILS",f), paste0("TAGD",f), paste0("PARENT1M",f), paste0("PARENT2M",f),
                               paste0("PARENT1P",f), paste0("PARENT2P",f))]
+  if(f == "98"){
+    NL <- NL[-which(!is.na(NL$BBLYEAR) & NL$BBLYEAR < 1984 & is.na(NL$BAND)),] 
+  }
   
   if(f == "86"){
-    NL <- NL[-which(!is.na(NL$BBLYEAR) & NL$BBLYEAR < 1967),] #diff from '86
-    ERRORS <- bind_rows(BW, BX, DB, DV, FT, HB, HV, JJ, NK) #diff from '86
+    NL <- NL[-which(!is.na(NL$BBLYEAR) & NL$BBLYEAR < 1967),] 
+    ERRORS <- bind_rows(BW, BX, DB, DV, FT, HB, HV, JJ, NK) 
   }else{
     
     #Finds the full format of the next year
-    if(f < 50){next_yr <- paste0("20", (as.numeric(f)+1) )}else{next_yr <- paste0("19",(as.numeric(f)+1) )}
-    
+    #***A little bit of a cheating way to go from 1999 to 2000, maybe rethink this a bit but it works now
+    if(f < 50){next_year <- paste0("20", str_pad((as.numeric(f)+1), width = 2, side = "left", pad = "0") )}else if(f == "99"){
+      next_year <- "2000"}else{next_year <- paste0("19",(as.numeric(f)+1) )}
+    #Strips it back down for the double digits of next year ex: "2001" -> "01"
+    nxt_yr <- substr(next_year, 3,4)
     
     if(any(grepl(next_yr,SPRINGMST15$YEAR))){ #Will only run if there is data in the SPRING file for the year in the future. I think it makes the above if obsolete? 
-      SPRINGA <- SPRINGMST15[which(SPRINGMST15$YEAR == next_yr),] %>% 
-        rename(REALBAND = BAND, !!paste0("SM", (as.numeric(f)+1)) := MONTH, !!paste0("SD", (as.numeric(f)+1)) := DAY)
-      SPRINGA[[paste0("SL", (as.numeric(f)+1))]] <- "SOG"
-      SPRINGA  <- SPRINGA[,c("REALBAND", paste0("SL", (as.numeric(f)+1)), paste0("SM", (as.numeric(f)+1)), paste0("SD", (as.numeric(f)+1)), "MATE")]
+      SPRINGA <- SPRINGMST15[which(SPRINGMST15$YEAR == next_year),] %>% 
+        rename(REALBAND = BAND, !!paste0("SM", nxt_yr) := MONTH, !!paste0("SD", nxt_yr) := DAY)
+      ###
+      #***Need to think about the SL00 for year '99. Maybe instead cut the first to characters from next_yr?
+      ###
+      SPRINGA[[paste0("SL", nxt_yr)]] <- "SOG"
+      SPRINGA  <- SPRINGA[,c("REALBAND", paste0("SL",nxt_yr), paste0("SM", nxt_yr), paste0("SD", nxt_yr), "MATE")]
       
       SPRINGB <- SPRINGA %>% rename(BAND = MATE)
       SPRINGB <- SPRINGB[!(SPRINGB$BAND == "" | SPRINGB$BAND == "UM" | SPRINGB$BAND == "NO"),] #Check operators 
       
       SPRINGC <- left_join(SPRINGB, NL) 
-      SPRINGC <- SPRINGC[!(SPRINGC$REALBAND == ""),] %>% rename(!!paste0("SMATEM", (as.numeric(f)+1)) := METAL, 
-                                                                !!paste0("SMATEP", (as.numeric(f)+1)) := BAND)
-      SPRINGC <- SPRINGC[,c("REALBAND", paste0("SL", (as.numeric(f)+1)), paste0("SM", (as.numeric(f)+1)), paste0("SD", (as.numeric(f)+1)), 
-                            paste0("SMATEM", (as.numeric(f)+1)), paste0("SMATEP", (as.numeric(f)+1)))]
+      SPRINGC <- SPRINGC[!(SPRINGC$REALBAND == ""),] %>% rename(!!paste0("SMATEM", nxt_yr) := METAL, 
+                                                                !!paste0("SMATEP", nxt_yr) := BAND)
+      SPRINGC <- SPRINGC[,c("REALBAND", paste0("SL", nxt_yr), paste0("SM", nxt_yr), paste0("SD", nxt_yr), 
+                            paste0("SMATEM", nxt_yr), paste0("SMATEP",nxt_yr))]
       
       
       SPRINGD <- SPRINGC %>% rename(BAND = REALBAND)
       
       SPRINGE <- SPRINGMST15[which(SPRINGMST15$YEAR == next_yr),]
       SPRINGE <- SPRINGE[which(SPRINGE$MATE == "" | SPRINGE$MATE == "UM" | SPRINGE$MATE == "NO"),] %>% 
-        rename(!!paste0("SM", (as.numeric(f)+1)) := MONTH, !!paste0("SD", (as.numeric(f)+1)) := DAY, 
-               !!paste0("SMATEP", (as.numeric(f)+1)) := MATE)
-      SPRINGE[[paste0("SL", (as.numeric(f)+1))]] <- "SOG"
-      SPRINGE[[paste0("SMATEM", (as.numeric(f)+1))]] <- ""
-      SPRINGE <- SPRINGE[,c("BAND", paste0("SD", (as.numeric(f)+1)), paste0("SM", (as.numeric(f)+1)), paste0("SL", (as.numeric(f)+1)), 
-                            paste0("SMATEP", (as.numeric(f)+1)), paste0("SMATEM", (as.numeric(f)+1)))]
+        rename(!!paste0("SM", nxt_yr) := MONTH, !!paste0("SD", nxt_yr) := DAY, 
+               !!paste0("SMATEP", nxt_yr) := MATE)
+      SPRINGE[[paste0("SL", nxt_yr)]] <- "SOG"
+      SPRINGE[[paste0("SMATEM", nxt_yr)]] <- ""
+      SPRINGE <- SPRINGE[,c("BAND", paste0("SD", nxt_yr), paste0("SM", nxt_yr), paste0("SL", nxt_yr), 
+                            paste0("SMATEP", nxt_yr), paste0("SMATEM", nxt_yr))]
       
       SPRINGF <- bind_rows(SPRINGD, SPRINGE)
       SPRINGF$COUNT <- 1
@@ -1491,15 +1502,19 @@ for(f in years){
     WINTER <- WINTERMST16 #***This is done so OG doesn't throw an error in years where the below code won't run? I think it's fine
     if(f %in% winter_yrs){
       WINTER <- WINTERMST16[which(WINTERMST16$YEAR == next_yr),] %>% #***If doing the thing above the if statement won't break it this can just be changed to WINTER later
-                  rename(!!paste0("WL", (as.numeric(f)+1)) := LOCATION, !!paste0("WM", (as.numeric(f)+1)) := MONTH,
-                         !!paste0("WD", (as.numeric(f)+1)) := DAY)
-      WINTER <- WINTER[,c(paste0("WL", (as.numeric(f)+1)), paste0("WM", (as.numeric(f)+1)), paste0("WD", (as.numeric(f)+1)), "BAND")]
+                  rename(!!paste0("WL", nxt_yr) := LOCATION, !!paste0("WM", nxt_yr) := MONTH,
+                         !!paste0("WD", nxt_yr) := DAY)
+      WINTER <- WINTER[,c(paste0("WL", nxt_yr), paste0("WM", nxt_yr), paste0("WD", nxt_yr), "BAND")]
     }
     
-    TOWA <- TOWER[which(grepl(paste0("*", f), TOWER$YEAR)),] %>% rename(REALBAND = BAND)
-    
+    TOWA <- TOWER[which(grepl(paste0("*", f), substr(TOWER$YEAR, nchar(TOWER$YEAR)-1, nchar(TOWER$YEAR)))),] %>% 
+                 rename(REALBAND = BAND)
+
     TOWB <- TOWA %>% rename(BAND = MATE)
-    TOWB <- TOWB[-which(is.na(TOWB$BAND) | TOWB$BAND == "UM" | TOWB$BAND == "NO"),]
+    if(length(which(is.na(TOWB$BAND) | TOWB$BAND == "UM" | TOWB$BAND == "NO")) != 0){
+      TOWB <- TOWB[-which(is.na(TOWB$BAND) | TOWB$BAND == "UM" | TOWB$BAND == "NO"),]
+    }
+    
     
     TOWC <- full_join(TOWB, NL)
     TOWC <- TOWC[-which(is.na(TOWC$BRSIZE)),]
@@ -1525,7 +1540,7 @@ for(f in years){
     
     TOWH <- TOWER[which(TOWER$YEAR == full_year & (is.na(TOWER$MATE) | TOWER$MATE == "UM" | TOWER$MATE == "NO")), !names(TOWER) %in% "YEAR"]
     TOWH <- TOWH %>% rename(!!paste0("DTO",f) := DATE, !!paste0("TMATEP",f) := MATE, !!paste0("TBS",f) := BRSIZE)
-    TOWH[[paste0("TMATEM",f)]] <- as.character(NA)
+    if(nrow(TOWH) != 0){TOWH[[paste0("TMATEM",f)]] <- as.character(NA)}
     
     
     TOWI <- full_join(TOWH, TOWG) %>% full_join(.,NL)
@@ -1609,7 +1624,6 @@ for(f in years){
     NN[[paste0("SMATEP",f)]][which(NN[[paste0("SMATEP",f)]] == "")] <- NA
     }
     
-    #OA is getting rid of too much right now, not sure why
     if(f < 89){
       OA <- NN[!(is.na(NN[[paste0("MATEM",f)]]) & is.na(NN[[paste0("NBMATEM",f)]]) & is.na(NN[[paste0("TMATEM",f)]]) & 
                  is.na(NN[[paste0("MATEP",f)]]) & is.na(NN[[paste0("NBMATEP",f)]]) & is.na(NN[[paste0("TMATEP",f)]])),]
@@ -1686,7 +1700,7 @@ for(f in years){
     
     #***When close to the end, run full program joining with all NL and run again with all NN and compare
     if(f > 89){
-      if(any(grepl(f, colnames(prev_WINTER)))){
+      if(any(grepl(f, colnames(prev_WINTER)) & (f %in% NL_yrs | f %in% NN_yrs))){
         if(f %in% NL_yrs){ OG <- full_join(prev_NL, prev_WINTER) }
         if(f %in% NN_yrs){ OG <- full_join(prev_NN, prev_WINTER) }
         OG <- OG[which(is.na(OG$METAL)), c("BAND", paste0("WD",f), paste0("WM",f))]
@@ -1703,7 +1717,7 @@ for(f in years){
       ERRORS <- bind_rows(ERRORS, BW, BX, DV, FT, HB, HB, JJ, NK, OA, OB, OC, OD, OE, OF)
     }
     ERRORS <- unique(ERRORS)
-  }
+  } #idk where this one matches to :)
   
   if(f > "05" & f < "86"){
     PA <- LL
