@@ -7,7 +7,7 @@ library(foreign)
 library(dplyr)
 library(stringr)
 
-#SASJC99 <- read.csv("X:\\brant_data\\SASJC99.csv", colClasses = "character")
+#SASLH99 <- read.csv("X:\\brant_data\\SASLH99.csv", colClasses = "character")
 
 #Creates and empty dataframe where we'll store instances where a band or metal is repeated so we can look into
 # the data and check for mistakes later
@@ -190,7 +190,7 @@ addToEnv <- function(list, regex){
 
 lists <- c('BSC','EGG','NEST','RECAP', 'MANIP') #List of the type of files will be pulling from
 #years <- c(86:99, sprintf("%02d", c(00:15))) #Vector of the different years we'll be looping through
-years <- as.character(c("86":"90"))
+years <- as.character(c("86":"99", "00"))
 
 
 #This a tad confusing, so we work with winter years the year before. So for example when coding for year 90 
@@ -223,10 +223,10 @@ for(f in years){
       prev_NL <- NL
       prev_NN <- NN
     }
-  if(f > 88){
+  if(f > 88 | f < 86){
     prev_SPRINGF <- SPRINGF
   }
-  if(f > 89){prev_WINTER <- WINTER}
+  if(f > 89 | f < 86){prev_WINTER <- WINTER}
   
   addToEnv(list = lists, regex = paste0("*", f)) #Calls the function
   #***rm(list = grep(pattern = "*86", names(.GlobalEnv), value = TRUE)) I need to think about this one for a sec
@@ -564,7 +564,7 @@ for(f in years){
 
   #Delete required metals from the PREA/old bands data
   if(nrow(DK) == 0){DL <- AA; DL$DEL <- NA; DL <- DL %>% mutate_if(is.logical,as.character)}else{ #Only runs if our DK df w/ the metals to deletes has stuff in it.
-    DL <- merge(AA, DK, by = "METAL")             #Changing above to DEL <- NA   
+    DL <- full_join(AA, DK, by = "METAL")  #changed merge to full_join  #Changing above to DEL <- NA   
     DL <- DL[!(DL$DEL=="Y"),]                   #Deletes the columns we have set to delete
   }
   DL$duma <- "1" #what's this dooo
@@ -586,8 +586,22 @@ for(f in years){
   # DN <- full_join(DM, DL, by = "METAL") %>% mutate(DEL = coalesce(DEL.x, DEL.y), 
   #                                                  COUNT = coalesce(COUNT.x, COUNT.y)) %>% 
   #                                           select(-DEL.x, -DEL.y, -COUNT.x, -COUNT.y)
-  DN <- full_join(DM, DL, by = "METAL") %>% mutate(DEL = coalesce(DEL.x, DEL.y)) %>% 
-                                            select(-DEL.x, -DEL.y)
+  #DN <- full_join(DM, DL, by = "METAL") %>% mutate(DEL = coalesce(DEL.x, DEL.y)) %>% 
+  #                                          select(-DEL.x, -DEL.y)
+  # if(any(grepl("*\\.x",colnames(DN)))){
+  #   DN <- DN %>% mutate() %>% 
+  #         select(-grep("*\\.x", colnames(DN), value = T), -grep("*\\.y", colnames(DN), value = T) )
+  # }
+  DN <- full_join(DM, DL, by = "METAL")
+  
+  DV_syms <- rlang::syms(grep("*\\.", colnames(DN), value = T)) #Finds columns that didn't merge properly by loking for "." in them
+  DV_name <- unique(c(substr(DV_syms, 1, nchar(DV_syms)-2))) #Finds what the name will be once coalesced. Ex: Nest.x and Nest.y will be coalesced into Nest
+  
+  #Coalesces columns based on a dynamic matching system so we don't have to hardcode it by name
+  for(i in 1:length(DV_name)){
+    DN <- DN %>% mutate(!!DV_name[i] := coalesce(!!! DV_syms[grepl(paste0('^',DV_name[i],"."), x = DV_syms)])) %>% 
+      select(-c(!!! DV_syms[grepl(paste0('^',DV_name[i],"."), x = DV_syms)]))
+  }
   
   DO <- DN[( is.na(DN$duma) & DN$dumb == "1"),] #Changed duma = "" to be is.na, since from my dumb test I think that's what it'd be
   
@@ -695,7 +709,7 @@ for(f in years){
     if(!is.na(DS[[paste0("BAND", f)]][i]) & !is.na(DS$BAND[i]) & DS[[paste0("BAND", f)]][i] != DS$BAND[i]
        & is.na(DS[[paste0("RP", f)]][i])){
       DS$BANDB[i] <- DS$BAND[i]
-      DS$COMMENTS[i] <- "Plastic bands do not agree for this recapture with original BSC"
+      DS$COMMENTS[i] <- "Plastic bands do not agree for this recapture" # with original BSC"
     }
     if(!is.na(DS[[paste0("BAND", f)]][i]) & is.na(DS$BAND[i]) ){
       DS$BANDB[i] <- DS[[paste0("BAND", f)]][i]
@@ -727,13 +741,12 @@ for(f in years){
   DT <- DT[,!names(DT) %in% c("BANDB", "WEBTAGB")]
   
   DU <- DT[, !names(DT) %in% "COMMENTS"]
-  DV <- DS[(!is.na(DT$COMMENTS)), c("COMMENTS", "METAL")] # "BAND", paste0("BAND", f), "WEBTAG", paste0("webtag", f))
+  DV <- DS[(!is.na(DT$COMMENTS)), c("COMMENTS", "METAL")] 
   
   ############################################################################
   #Now we deal with nest data
   ############################################################################
-  #Had to change to assign to do a dynamic dataframe, different from other file
-  assign(paste0("NEST", f), get(paste0("NEST", f)) %>% mutate_all(as.character)) #NEST86 <- NEST86 %>% mutate_all(as.character)
+  assign(paste0("NEST", f), get(paste0("NEST", f)) %>% mutate_all(as.character)) 
   
   FA <- get(paste0("NEST", f))[(!is.na(get(paste0("NEST", f))[["BAND"]])),]
   FA <- FA[FA$BAND != "UM",]
@@ -1034,23 +1047,30 @@ for(f in years){
   HN <- full_join(HL, HM, by = c("METAL")) 
    #I couldn't figure out a better way to seperate this out, tried inside a mutate with if but it seems like case_when 
    #and ifelse are the only real options which isn't what I want :(
-  if(f == "86"){
-     HN <- HN %>% mutate(!!paste0("webtag",f) := coalesce(!!as.name(paste0("webtag",f, ".x")), !!as.name(paste0("webtag",f, ".y"))), #Different from '86
-                         !!paste0("BAND",f) := coalesce(!!as.name(paste0("BAND",f, ".x")), !!as.name(paste0("BAND",f, ".y"))), #Different from '86 
-                        ) %>% 
-                  select( -!!paste0("webtag",f, ".x"), -!!paste0("webtag",f, ".y"), -!!paste0("BAND",f, ".x"), -!!paste0("BAND",f, ".y"))
-     
-  } 
-   #This could be put on the same line as the full_join but I like it visually down here better 
-  HN <- HN %>% mutate(!!paste0("mr",f) := coalesce(!!as.name(paste0("mr",f,".x")), !!as.name(paste0("mr",f,".y"))),
-                      !!paste0("dbd",f) := coalesce(!!as.name(paste0("dbd",f, ".x")), !!as.name(paste0("dbd",f, ".y"))),
-                      DEL = coalesce(DEL.x, DEL.y),
-                     ) %>%
-               select(-!!paste0("mr",f,".x"), -!!paste0("mr",f,".y"), -!!paste0("dbd",f, ".x"), -!!paste0("dbd",f, ".y"),
-                       -DEL.x, -DEL.y)
-  if("X.x" %in% colnames(HN)){
-    HN <- HN %>% mutate(X = coalesce(X.x, X.y),) %>%
-      select(-X.x, -X.y)
+  # if(f == "86"){
+  #    HN <- HN %>% mutate(!!paste0("webtag",f) := coalesce(!!as.name(paste0("webtag",f, ".x")), !!as.name(paste0("webtag",f, ".y"))), #Different from '86
+  #                        !!paste0("BAND",f) := coalesce(!!as.name(paste0("BAND",f, ".x")), !!as.name(paste0("BAND",f, ".y"))), #Different from '86 
+  #                       ) %>% 
+  #                 select( -!!paste0("webtag",f, ".x"), -!!paste0("webtag",f, ".y"), -!!paste0("BAND",f, ".x"), -!!paste0("BAND",f, ".y"))
+  #    
+  # } 
+  #  #This could be put on the same line as the full_join but I like it visually down here better 
+  # 
+  # HN <- HN %>% mutate(!!paste0("mr",f) := coalesce(!!as.name(paste0("mr",f,".x")), !!as.name(paste0("mr",f,".y"))),
+  #                     !!paste0("dbd",f) := coalesce(!!as.name(paste0("dbd",f, ".x")), !!as.name(paste0("dbd",f, ".y"))),
+  #                     DEL = coalesce(DEL.x, DEL.y),
+  #                    ) %>%
+  #              select(-!!paste0("mr",f,".x"), -!!paste0("mr",f,".y"), -!!paste0("dbd",f, ".x"), -!!paste0("dbd",f, ".y"),
+  #                      -DEL.x, -DEL.y)
+  
+  #Dynamic variable names for coalescing purposes.
+  DV_HNsyms <- rlang::syms(grep("*\\.", colnames(HN), value = T)) #Finds columns that didn't merge properly by loking for "." in them
+  DV_HNname <- unique(c(substr(DV_HNsyms, 1, nchar(DV_HNsyms)-2))) #Finds what the name will be once coalesced. Ex: Nest.x and Nest.y will be coalesced into Nest
+  
+  #Coalesces columns based on a dynamic matching system so we don't have to hardcode it by name
+  for(i in 1:length(DV_HNname)){
+    HN <- HN %>% mutate(!!DV_HNname[i] := coalesce(!!! DV_HNsyms[grepl(paste0('^',DV_HNname[i],"."), x = DV_HNsyms)])) %>% 
+      select(-c(!!! DV_HNsyms[grepl(paste0('^',DV_HNname[i],"."), x = DV_HNsyms)]))
   }
   
   HO <- HN[(is.na(HN$duma) & HN$dumb == "1"),]
@@ -1058,22 +1078,34 @@ for(f in years){
   HP$METAL <- HP[[paste0("mr",f)]]
   HP <- HP %>% mutate_if(is.logical, as.character)
   
-  HQ <- full_join(FS, HP, by = "METAL") %>% #***I think a right join here would be quicker to get the same outcome, but idk if that could cause issues later??
-    mutate(!!paste0("mr",f) := coalesce(!!as.name(paste0("mr",f,".x")), !!as.name(paste0("mr",f,".y"))),
-           WEBTAG = coalesce(WEBTAG.x, WEBTAG.y),
-           !!paste0("PR",f) := coalesce(!!as.name(paste0("PR",f, ".x")), !!as.name(paste0("PR",f, ".y"))),
-           AGEB = coalesce(AGEB.x, AGEB.y),
-           SEXB = coalesce(SEXB.x, SEXB.y),
-           DATEB = coalesce(DATEB.x, DATEB.y),
-           YEARB = coalesce(YEARB.x, YEARB.y)
-    ) %>%
-    select(-!!paste0("mr",f,".x"), -!!paste0("mr",f,".y"), -WEBTAG.x, -WEBTAG.y, -!!paste0("PR",f, ".x"), -!!paste0("PR",f, ".y"), -AGEB.x, -AGEB.y,
-           -SEXB.x, -SEXB.y, -DATEB.x, -DATEB.y, -YEARB.x, -YEARB.y)
+  HQ <- full_join(FS, HP, by = "METAL") 
+  # %>% #***I think a right join here would be quicker to get the same outcome, but idk if that could cause issues later??
+  #   mutate(!!paste0("mr",f) := coalesce(!!as.name(paste0("mr",f,".x")), !!as.name(paste0("mr",f,".y"))),
+  #          WEBTAG = coalesce(WEBTAG.x, WEBTAG.y),
+  #          !!paste0("PR",f) := coalesce(!!as.name(paste0("PR",f, ".x")), !!as.name(paste0("PR",f, ".y"))),
+  #          AGEB = coalesce(AGEB.x, AGEB.y),
+  #          SEXB = coalesce(SEXB.x, SEXB.y),
+  #          DATEB = coalesce(DATEB.x, DATEB.y),
+  #          YEARB = coalesce(YEARB.x, YEARB.y)
+  #   ) %>%
+  #   select(-!!paste0("mr",f,".x"), -!!paste0("mr",f,".y"), -WEBTAG.x, -WEBTAG.y, -!!paste0("PR",f, ".x"), -!!paste0("PR",f, ".y"), -AGEB.x, -AGEB.y,
+  #          -SEXB.x, -SEXB.y, -DATEB.x, -DATEB.y, -YEARB.x, -YEARB.y)
+  # if(any(colnames(HQ) == "X.x")){
+  #   HQ <- HQ %>% mutate(X = coalesce(X.x, X.y)) %>% select(-X.x, -X.y)
+  # }
+  DV_HQsyms <- rlang::syms(grep("*\\.", colnames(HQ), value = T)) #Finds columns that didn't merge properly by loking for "." in them
+  DV_HQname <- unique(c(substr(DV_HQsyms, 1, nchar(DV_HQsyms)-2))) #Finds what the name will be once coalesced. Ex: Nest.x and Nest.y will be coalesced into Nest
   
-  if(f == "86"){
-    HQ <- HQ %>% mutate(!!paste0("BAND",f) := coalesce(!!as.name(paste0("BAND",f, ".x")), !!as.name(paste0("BAND",f, ".y")))) %>% 
-                 select(-!!paste0("BAND",f, ".x"), -!!paste0("BAND",f, ".y"))
+  #Coalesces columns based on a dynamic matching system so we don't have to hardcode it by name
+  for(i in 1:length(DV_HQname)){
+    HQ <- HQ %>% mutate(!!DV_HQname[i] := coalesce(!!! DV_HQsyms[grepl(paste0('^',DV_HQname[i],"."), x = DV_HQsyms)])) %>% 
+      select(-c(!!! DV_HQsyms[grepl(paste0('^',DV_HQname[i],"."), x = DV_HQsyms)]))
   }
+  
+  # if(f == "86"){
+  #   HQ <- HQ %>% mutate(!!paste0("BAND",f) := coalesce(!!as.name(paste0("BAND",f, ".x")), !!as.name(paste0("BAND",f, ".y")))) %>% 
+  #                select(-!!paste0("BAND",f, ".x"), -!!paste0("BAND",f, ".y"))
+  # }
   
   HQ <- HQ[which(HQ$DEL == "Y"), !names(HQ) %in% "METAL"]
   
@@ -1169,12 +1201,13 @@ for(f in years){
   ###
   #The J's!!!! Egg Data!!!
   ###
+  #Matching webtags to egg data
   
   #Weird cases when you see an egg to measure AS it's hatching, so you have measurements AND tag info in once
   current_egg <- get(paste0("EGG",f))
   current_egg$EGGB[which(current_egg$EGGB == "" & current_egg$TAG != "")] <- "?"
   
-  JA <- current_egg[( current_egg[["TAG"]] != "" ),] #I think "" is right here, so far I have seen "" but no NA's so this seems good for now
+  JA <- current_egg[( current_egg[["TAG"]] != "" ),] 
   keep <- c("COUNT", "NEST", "EGG",'TAGD', "STATE", "DATE", "TAG")
   if(nrow(JA) != 0){
     JA$EGG <- JA$EGGB
@@ -1209,7 +1242,10 @@ for(f in years){
                                                                               ) %>% 
                                                                         select(-LENGTH.x, -LENGTH.y, -WIDTH.x, -WIDTH.y) %>% #, -TAG.x, -TAG.y
                                                                         rename(D = TAGD, WEBTAG = TAG)
-  
+  JC$D[which(JC$D == "")] <- NA
+  #This throws a warning when converting to a numeric
+  #A blank will create an NA ex: TJO075; solved by hardcoding "" to NA's already.
+  #A non number will create an NA ex: MJK007; this is just a mistake in raw data. 
   JC <- JC %>% mutate_at(vars(D, L, W, COUNT), as.numeric)
   JC <- unique(JC)
   
@@ -1356,7 +1392,13 @@ for(f in years){
   NB <- full_join(NA_, LK)
   NB <- NB[which(NB$WEBTAG != "" & NB$METAL != "" & !is.na(NB$WEBTAG), !is.na(NB$METAL)),] 
   if(nrow(NB) != 0){
-    NB$YEAR <- (as.numeric(NB$YEARB) - 1900) #***Need to think about this one here for years past '99
+    #***Need to think about this one here for years past '99 
+    #***Probably can come up with a more clever way but this will work for now
+    if(f <= 99 & f >= 86){
+      NB$YEAR <- (as.numeric(NB$YEARB) - 1900) 
+    }else{
+      NB$YEAR <- str_pad((as.numeric(NB$YEARB) - 2000), width = 2, side = "left", pad = "0")
+    }
     NB <- NB[which(NB$YEAR == f), !names(NB) %in% "YEAR"]
   }else{
     NB <- setNames(data.frame(matrix(nrow = 0, ncol = length(colnames(NB)) )), colnames(NB))
@@ -1454,16 +1496,13 @@ for(f in years){
     #Finds the full format of the next year
     #***A little bit of a cheating way to go from 1999 to 2000, maybe rethink this a bit but it works now
     if(f < 50){next_year <- paste0("20", str_pad((as.numeric(f)+1), width = 2, side = "left", pad = "0") )}else if(f == "99"){
-      next_year <- "2000"}else{next_year <- paste0("19",(as.numeric(f)+1) )}
+      next_year <- "2000"}else{next_year <- paste0("19",(as.numeric(f)+1))}
     #Strips it back down for the double digits of next year ex: "2001" -> "01"
     nxt_yr <- substr(next_year, 3,4)
     
-    if(any(grepl(next_yr,SPRINGMST15$YEAR))){ #Will only run if there is data in the SPRING file for the year in the future. I think it makes the above if obsolete? 
+    if(any(grepl(next_year,SPRINGMST15$YEAR))){ #Will only run if there is data in the SPRING file for the year in the future. I think it makes the above if obsolete? 
       SPRINGA <- SPRINGMST15[which(SPRINGMST15$YEAR == next_year),] %>% 
         rename(REALBAND = BAND, !!paste0("SM", nxt_yr) := MONTH, !!paste0("SD", nxt_yr) := DAY)
-      ###
-      #***Need to think about the SL00 for year '99. Maybe instead cut the first to characters from next_yr?
-      ###
       SPRINGA[[paste0("SL", nxt_yr)]] <- "SOG"
       SPRINGA  <- SPRINGA[,c("REALBAND", paste0("SL",nxt_yr), paste0("SM", nxt_yr), paste0("SD", nxt_yr), "MATE")]
       
@@ -1479,7 +1518,7 @@ for(f in years){
       
       SPRINGD <- SPRINGC %>% rename(BAND = REALBAND)
       
-      SPRINGE <- SPRINGMST15[which(SPRINGMST15$YEAR == next_yr),]
+      SPRINGE <- SPRINGMST15[which(SPRINGMST15$YEAR == next_year),]
       SPRINGE <- SPRINGE[which(SPRINGE$MATE == "" | SPRINGE$MATE == "UM" | SPRINGE$MATE == "NO"),] %>% 
         rename(!!paste0("SM", nxt_yr) := MONTH, !!paste0("SD", nxt_yr) := DAY, 
                !!paste0("SMATEP", nxt_yr) := MATE)
@@ -1501,7 +1540,7 @@ for(f in years){
     
     WINTER <- WINTERMST16 #***This is done so OG doesn't throw an error in years where the below code won't run? I think it's fine
     if(f %in% winter_yrs){
-      WINTER <- WINTERMST16[which(WINTERMST16$YEAR == next_yr),] %>% #***If doing the thing above the if statement won't break it this can just be changed to WINTER later
+      WINTER <- WINTERMST16[which(WINTERMST16$YEAR == next_year),] %>% #***If doing the thing above the if statement won't break it this can just be changed to WINTER later
                   rename(!!paste0("WL", nxt_yr) := LOCATION, !!paste0("WM", nxt_yr) := MONTH,
                          !!paste0("WD", nxt_yr) := DAY)
       WINTER <- WINTER[,c(paste0("WL", nxt_yr), paste0("WM", nxt_yr), paste0("WD", nxt_yr), "BAND")]
@@ -1556,16 +1595,18 @@ for(f in years){
                  c("BAND", paste0("DTO",f), paste0("TMATEM",f), paste0("TMATEP",f), paste0("TBS",f))]
     
     TOWL <- bind_rows(TOWG, TOWH, TOWK)
-    TOWL$COUNT <- 1
+    if(nrow(TOWL) != 0){
+      TOWL$COUNT <- 1
+      
+      #find duplicate bands from TOWL
+      TOWM <- TOWL %>% group_by(BAND) %>% mutate(COUNT = sum(COUNT))
+      CheckReplicates <- Mistakes(x = TOWM, groupby = "BAND", yeardf = BA, CheckReplicates)
+      #Condenses down duplicates by picking the last instance with the most information. Could also just do last idk
+      TOWM <- TOWM[,!names(TOWM) %in% "COUNT"] %>% group_by(BAND) %>%
+        summarise_all(~last(.[which(!is.na(.) & (. != "") )]))
+    }else{TOWM <- TOWL}
     
-    #find duplicate bands from towL
-    TOWM <- TOWL %>% group_by(BAND) %>% mutate(COUNT = sum(COUNT))
-    CheckReplicates <- Mistakes(x = TOWM, groupby = "BAND", yeardf = BA, CheckReplicates)
-    #I think this should just be condensed like we decided with NBRM? 
-    #TOWM <- TOWM[!(TOWM$COUNT > 1), !names(TOWM) %in% "COUNT"]
-    #Condenses down duplicates by picking the last instance with the most information. Could also just do last idk
-    TOWM <- TOWM[,!names(TOWM) %in% "COUNT"] %>% group_by(BAND) %>%
-      summarise_all(~last(.[which(!is.na(.) & (. != "") )]))
+    
     
     NBRA <- NBBAND[(NBBAND$YEAR == full_year),] %>% rename(REALBAND = BAND, !!paste0("NBC",f) := NBCOL)
     
@@ -1612,7 +1653,7 @@ for(f in years){
               summarise_all(~last(.[which(!is.na(.) & (. != "") )]))
     
     NN <- full_join(NL, TOWM)  %>% full_join(., NBRM)
-    if(f > "87"){
+    if(f > "87" | f < '85'){
       NN <- full_join(NN, SPRINGF)
       if(f %in% winter_yrs){
         NN <- full_join(NN, WINTER)
@@ -1624,7 +1665,7 @@ for(f in years){
     NN[[paste0("SMATEP",f)]][which(NN[[paste0("SMATEP",f)]] == "")] <- NA
     }
     
-    if(f < 89){
+    if(f < '89' & f > '85'){
       OA <- NN[!(is.na(NN[[paste0("MATEM",f)]]) & is.na(NN[[paste0("NBMATEM",f)]]) & is.na(NN[[paste0("TMATEM",f)]]) & 
                  is.na(NN[[paste0("MATEP",f)]]) & is.na(NN[[paste0("NBMATEP",f)]]) & is.na(NN[[paste0("TMATEP",f)]])),]
     }else{
@@ -1642,7 +1683,7 @@ for(f in years){
       ){
         OA$COMMENTS[i] <- "Mate changed within year"
       }
-      if(f > '88'){
+      if(f > '88' | f < '85'){
         if( (!is.na(OA[[paste0("MATEP",f)]][i]) & !is.na(OA[[paste0("SMATEP",f)]][i]) & (OA[[paste0("MATEP",f)]][i] != OA[[paste0("SMATEP",f)]][i])) |
             (!is.na(OA[[paste0("TMATEP",f)]][i]) & !is.na(OA[[paste0("SMATEP",f)]][i]) & (OA[[paste0("TMATEP",f)]][i] != OA[[paste0("SMATEP",f)]][i])) |
             (!is.na(OA[[paste0("SMATEP",f)]][i]) & !is.na(OA[[paste0("NBMATEP",f)]][i]) & (OA[[paste0("SMATEP",f)]][i] != OA[[paste0("NBMATEP",f)]][i])) #|
@@ -1653,9 +1694,9 @@ for(f in years){
     }
     keep <- c("METAL", "BAND", paste0("MATEM",f), paste0("MATEP",f), paste0("NBD",f), paste0("NBMATEM",f), paste0("NBMATEP",f), 
               paste0("DTO",f), paste0("TMATEM",f), paste0("TMATEP",f), paste0("TBS",f), "COMMENTS")
-    if(f > 88){
+    if(f > '88' | f < '86'){
       extra <- c(paste0("SM",f), paste0("SD",f), paste0("SMATEM",f), paste0("SMATEP",f))
-      OA <- OA[!is.na(OA$COMMENTS), c(extra, keep)]
+      OA <- OA[!is.na(OA$COMMENTS), c(keep, extra)]
     }else{
       OA <- OA[!is.na(OA$COMMENTS), keep]
     }
@@ -1673,7 +1714,9 @@ for(f in years){
     
     
     #Finds the full format of the previous year
-    if(f < 50){prev_yr <- paste0("20", (as.numeric(f)-1) )}else{prev_yr <- paste0("19",(as.numeric(f)-1) )}
+    if(f < '50' & f > '00'){prev_yr <- paste0("20", str_pad((as.numeric(f)-1), width = 2, side = "left", pad = "0")) }else if(f == "00"){prev_yr <- "1999"}else{
+      prev_yr <- paste0("19",str_pad((as.numeric(f)-1), width = 2, side = "left", pad = "0") )
+    }
     
     OC <- NN
     OC$COMMENTS <- as.character(NA)
@@ -1699,7 +1742,7 @@ for(f in years){
     }
     
     #***When close to the end, run full program joining with all NL and run again with all NN and compare
-    if(f > 89){
+    if(f > 89 | f < 85){
       if(any(grepl(f, colnames(prev_WINTER)) & (f %in% NL_yrs | f %in% NN_yrs))){
         if(f %in% NL_yrs){ OG <- full_join(prev_NL, prev_WINTER) }
         if(f %in% NN_yrs){ OG <- full_join(prev_NN, prev_WINTER) }
