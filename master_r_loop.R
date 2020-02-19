@@ -7,7 +7,7 @@ library(foreign)
 library(dplyr)
 library(stringr)
 
-#SASLH99 <- read.csv("X:\\brant_data\\SASLH99.csv", colClasses = "character")
+#SASFA02 <- read.csv("X:\\brant_data\\SASFA02.csv", colClasses = "character")
 
 #Creates and empty dataframe where we'll store instances where a band or metal is repeated so we can look into
 # the data and check for mistakes later
@@ -190,7 +190,7 @@ addToEnv <- function(list, regex){
 
 lists <- c('BSC','EGG','NEST','RECAP', 'MANIP') #List of the type of files will be pulling from
 #years <- c(86:99, sprintf("%02d", c(00:15))) #Vector of the different years we'll be looping through
-years <- as.character(c("86":"99", "00"))
+years <- c(86:99, sprintf("%02d", c(00:02)))
 
 
 #This a tad confusing, so we work with winter years the year before. So for example when coding for year 90 
@@ -565,7 +565,8 @@ for(f in years){
   #Delete required metals from the PREA/old bands data
   if(nrow(DK) == 0){DL <- AA; DL$DEL <- NA; DL <- DL %>% mutate_if(is.logical,as.character)}else{ #Only runs if our DK df w/ the metals to deletes has stuff in it.
     DL <- full_join(AA, DK, by = "METAL")  #changed merge to full_join  #Changing above to DEL <- NA   
-    DL <- DL[!(DL$DEL=="Y"),]                   #Deletes the columns we have set to delete
+    if(any(!is.na(DL$DEL))){
+      DL <- DL[-which(DL$DEL == "Y"),]}                  #Deletes the columns we have set to delete
   }
   DL$duma <- "1" #what's this dooo
   
@@ -573,7 +574,7 @@ for(f in years){
   DM <- full_join(DG, DK, by = "METAL")
   if(nrow(DM) != 0){
     if(any(!is.na(DM$DEL))){
-    DM <- DM[!(DM$DEL == "Y"),]}
+    DM <- DM[-which(DM$DEL == "Y"),]}
     DM$dumb <- 1
   }else{DM <- setNames(data.frame(matrix(ncol = length(colnames(DM)) + 1, nrow = 0)), c(colnames(DM), "dumb"))
         DM <- DM %>% mutate_if(is.logical, as.character) %>% mutate_at("COUNT", as.numeric)}
@@ -581,26 +582,16 @@ for(f in years){
   DM <- DM %>% rename(!!paste0("dumpr",f) := !!paste0("PR",f), !!paste0("webtag",f) := WEBTAG, !!paste0("ntd",f) := DATE, 
                       !!paste0("ageb",f) := AGEB, !!paste0("sexb",f) := SEXB, !!paste0("dateb",f) := DATEB, 
                       !!paste0("yearb",f) := YEARB)
-  
-  #Merge our cleaned up dataframes together
-  # DN <- full_join(DM, DL, by = "METAL") %>% mutate(DEL = coalesce(DEL.x, DEL.y), 
-  #                                                  COUNT = coalesce(COUNT.x, COUNT.y)) %>% 
-  #                                           select(-DEL.x, -DEL.y, -COUNT.x, -COUNT.y)
-  #DN <- full_join(DM, DL, by = "METAL") %>% mutate(DEL = coalesce(DEL.x, DEL.y)) %>% 
-  #                                          select(-DEL.x, -DEL.y)
-  # if(any(grepl("*\\.x",colnames(DN)))){
-  #   DN <- DN %>% mutate() %>% 
-  #         select(-grep("*\\.x", colnames(DN), value = T), -grep("*\\.y", colnames(DN), value = T) )
-  # }
+
   DN <- full_join(DM, DL, by = "METAL")
   
-  DV_syms <- rlang::syms(grep("*\\.", colnames(DN), value = T)) #Finds columns that didn't merge properly by loking for "." in them
-  DV_name <- unique(c(substr(DV_syms, 1, nchar(DV_syms)-2))) #Finds what the name will be once coalesced. Ex: Nest.x and Nest.y will be coalesced into Nest
+  DN_syms <- rlang::syms(grep("*\\.[xy]", colnames(DN), value = T)) #Finds columns that didn't merge properly by loking for "." in them
+  DN_name <- unique(c(substr(DN_syms, 1, nchar(DN_syms)-2))) #Finds what the name will be once coalesced. Ex: Nest.x and Nest.y will be coalesced into Nest
   
   #Coalesces columns based on a dynamic matching system so we don't have to hardcode it by name
-  for(i in 1:length(DV_name)){
-    DN <- DN %>% mutate(!!DV_name[i] := coalesce(!!! DV_syms[grepl(paste0('^',DV_name[i],"."), x = DV_syms)])) %>% 
-      select(-c(!!! DV_syms[grepl(paste0('^',DV_name[i],"."), x = DV_syms)]))
+  for(i in 1:length(DN_name)){
+    DN <- DN %>% mutate(!!DN_name[i] := coalesce(!!! DN_syms[grepl(paste0('^',DN_name[i],"."), x = DN_syms)])) %>% 
+      select(-c(!!! DN_syms[grepl(paste0('^',DN_name[i],"."), x = DN_syms)]))
   }
   
   DO <- DN[( is.na(DN$duma) & DN$dumb == "1"),] #Changed duma = "" to be is.na, since from my dumb test I think that's what it'd be
@@ -1045,32 +1036,15 @@ for(f in years){
                           !!paste0("dateb",f) := DATEB, !!paste0("yearb",f) := YEARB)
   
   HN <- full_join(HL, HM, by = c("METAL")) 
-   #I couldn't figure out a better way to seperate this out, tried inside a mutate with if but it seems like case_when 
-   #and ifelse are the only real options which isn't what I want :(
-  # if(f == "86"){
-  #    HN <- HN %>% mutate(!!paste0("webtag",f) := coalesce(!!as.name(paste0("webtag",f, ".x")), !!as.name(paste0("webtag",f, ".y"))), #Different from '86
-  #                        !!paste0("BAND",f) := coalesce(!!as.name(paste0("BAND",f, ".x")), !!as.name(paste0("BAND",f, ".y"))), #Different from '86 
-  #                       ) %>% 
-  #                 select( -!!paste0("webtag",f, ".x"), -!!paste0("webtag",f, ".y"), -!!paste0("BAND",f, ".x"), -!!paste0("BAND",f, ".y"))
-  #    
-  # } 
-  #  #This could be put on the same line as the full_join but I like it visually down here better 
-  # 
-  # HN <- HN %>% mutate(!!paste0("mr",f) := coalesce(!!as.name(paste0("mr",f,".x")), !!as.name(paste0("mr",f,".y"))),
-  #                     !!paste0("dbd",f) := coalesce(!!as.name(paste0("dbd",f, ".x")), !!as.name(paste0("dbd",f, ".y"))),
-  #                     DEL = coalesce(DEL.x, DEL.y),
-  #                    ) %>%
-  #              select(-!!paste0("mr",f,".x"), -!!paste0("mr",f,".y"), -!!paste0("dbd",f, ".x"), -!!paste0("dbd",f, ".y"),
-  #                      -DEL.x, -DEL.y)
   
   #Dynamic variable names for coalescing purposes.
-  DV_HNsyms <- rlang::syms(grep("*\\.", colnames(HN), value = T)) #Finds columns that didn't merge properly by loking for "." in them
-  DV_HNname <- unique(c(substr(DV_HNsyms, 1, nchar(DV_HNsyms)-2))) #Finds what the name will be once coalesced. Ex: Nest.x and Nest.y will be coalesced into Nest
+  HN_syms <- rlang::syms(grep("*\\.[xy]", colnames(HN), value = T)) #Finds columns that didn't merge properly by loking for "." in them
+  HN_name <- unique(c(substr(HN_syms, 1, nchar(HN_syms)-2))) #Finds what the name will be once coalesced. Ex: Nest.x and Nest.y will be coalesced into Nest
   
   #Coalesces columns based on a dynamic matching system so we don't have to hardcode it by name
-  for(i in 1:length(DV_HNname)){
-    HN <- HN %>% mutate(!!DV_HNname[i] := coalesce(!!! DV_HNsyms[grepl(paste0('^',DV_HNname[i],"."), x = DV_HNsyms)])) %>% 
-      select(-c(!!! DV_HNsyms[grepl(paste0('^',DV_HNname[i],"."), x = DV_HNsyms)]))
+  for(i in 1:length(HN_name)){
+    HN <- HN %>% mutate(!!HN_name[i] := coalesce(!!! HN_syms[grepl(paste0('^',HN_name[i],"."), x = HN_syms)])) %>% 
+      select(-c(!!! HN_syms[grepl(paste0('^',HN_name[i],"."), x = HN_syms)]))
   }
   
   HO <- HN[(is.na(HN$duma) & HN$dumb == "1"),]
@@ -1080,26 +1054,14 @@ for(f in years){
   
   HQ <- full_join(FS, HP, by = "METAL") 
   # %>% #***I think a right join here would be quicker to get the same outcome, but idk if that could cause issues later??
-  #   mutate(!!paste0("mr",f) := coalesce(!!as.name(paste0("mr",f,".x")), !!as.name(paste0("mr",f,".y"))),
-  #          WEBTAG = coalesce(WEBTAG.x, WEBTAG.y),
-  #          !!paste0("PR",f) := coalesce(!!as.name(paste0("PR",f, ".x")), !!as.name(paste0("PR",f, ".y"))),
-  #          AGEB = coalesce(AGEB.x, AGEB.y),
-  #          SEXB = coalesce(SEXB.x, SEXB.y),
-  #          DATEB = coalesce(DATEB.x, DATEB.y),
-  #          YEARB = coalesce(YEARB.x, YEARB.y)
-  #   ) %>%
-  #   select(-!!paste0("mr",f,".x"), -!!paste0("mr",f,".y"), -WEBTAG.x, -WEBTAG.y, -!!paste0("PR",f, ".x"), -!!paste0("PR",f, ".y"), -AGEB.x, -AGEB.y,
-  #          -SEXB.x, -SEXB.y, -DATEB.x, -DATEB.y, -YEARB.x, -YEARB.y)
-  # if(any(colnames(HQ) == "X.x")){
-  #   HQ <- HQ %>% mutate(X = coalesce(X.x, X.y)) %>% select(-X.x, -X.y)
-  # }
-  DV_HQsyms <- rlang::syms(grep("*\\.", colnames(HQ), value = T)) #Finds columns that didn't merge properly by loking for "." in them
-  DV_HQname <- unique(c(substr(DV_HQsyms, 1, nchar(DV_HQsyms)-2))) #Finds what the name will be once coalesced. Ex: Nest.x and Nest.y will be coalesced into Nest
+
+  HQ_syms <- rlang::syms(grep("*\\.[xy]", colnames(HQ), value = T)) #Finds columns that didn't merge properly by loking for "." in them
+  HQ_name <- unique(c(substr(HQ_syms, 1, nchar(HQ_syms)-2))) #Finds what the name will be once coalesced. Ex: Nest.x and Nest.y will be coalesced into Nest
   
   #Coalesces columns based on a dynamic matching system so we don't have to hardcode it by name
-  for(i in 1:length(DV_HQname)){
-    HQ <- HQ %>% mutate(!!DV_HQname[i] := coalesce(!!! DV_HQsyms[grepl(paste0('^',DV_HQname[i],"."), x = DV_HQsyms)])) %>% 
-      select(-c(!!! DV_HQsyms[grepl(paste0('^',DV_HQname[i],"."), x = DV_HQsyms)]))
+  for(i in 1:length(HQ_name)){
+    HQ <- HQ %>% mutate(!!HQ_name[i] := coalesce(!!! HQ_syms[grepl(paste0('^',HQ_name[i],"."), x = HQ_syms)])) %>% 
+      select(-c(!!! HQ_syms[grepl(paste0('^',HQ_name[i],"."), x = HQ_syms)]))
   }
   
   # if(f == "86"){
